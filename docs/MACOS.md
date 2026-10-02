@@ -54,12 +54,18 @@ reserves arrow keys for driving even when a dashboard slider previously had focu
 
 `engine-sim-driving` is a device-independent library with a closed Catmull-Rom
 forest circuit in metres and a simple chassis model. It uses bicycle steering,
-speed-sensitive wheel lock, limited lateral grip, a slip response, body roll/pitch,
+speed-sensitive keyboard wheel lock, limited lateral grip, body roll/pitch,
 and barrier projection/rebound. The engine's vehicle distance and speed supply
 longitudinal movement. The track is 11 m wide, with barriers at 8.5 m from its
 centre. Off-road resistance and impacts add bounded opposing force to the existing
 vehicle drag constraint, so slowing down remains part of the engine/drivetrain
 simulation. This is approximate game handling, not a calibrated tire/suspension model.
+
+Steering has one rack response, with quicker centring and countersteering. Turn
+rate follows the rack directly; there is no additional yaw-rate delay or artificial
+lagging velocity heading. The centre-of-mass bicycle geometry supplies the travel
+angle. Full keyboard lock requests about 0.95 g at speed, instead of exceeding the
+available tire grip by several times. Road grip is capped at 1.12 g; dirt is 0.48 g.
 
 Eight ordered forward checkpoints validate each lap. Crossing the finish backwards
 or circling near the start cannot award laps. Three laps finish the time trial.
@@ -75,10 +81,17 @@ load expire; a stopped renderer cannot freeze steering or collision detection.
 Game snapshots are interpolated for presentation, about one game tick behind;
 frames never advance physics. The game worker has bounded catch-up work.
 
-`src/sound_road_scene.h` owns static metre-scaled track/scenery geometry and a
-spring chase camera with velocity feed-forward. It clips/culls scenery on the
+`src/sound_road_scene.h` owns static metre-scaled track/scenery geometry and uses
+the device-free `DrivingCamera`. A single heading response controls both the chase
+offset and aim, while translation follows the interpolated game pose directly.
+Speed cannot stretch the camera distance, and camera filters no longer compound
+steering lag. It clips/culls scenery on the
 render thread. Textures, curbs, barriers and checkpoint markers remain in world
-coordinates. `src/sound_car_metal.h` uploads the credited concept-car mesh once
+coordinates. The sun is projected from a fixed world direction, with a 0.53-degree
+angular diameter, and disappears outside the camera view. The same direction
+lights scenery and the car. Straight travel correctly leaves this distant sun
+in place; steering rotates it across the sky.
+`src/sound_car_metal.h` uploads the credited concept-car mesh once
 (162,766 vertices, 213,347 triangles). Metal steers/rolls the wheels and transforms
 and lights the body. Mipmapped image planes supply foliage; a depth buffer resolves
 the scene. The dashboard uses one draw call; the game uses three (scenery, car, HUD).
@@ -213,6 +226,17 @@ Both 1.2-second forced UI/render stalls preserved game physics and sound.
 The separate audio-only start/rev/restart/switch check passed with zero missing,
 clipped or unexpected silent output and **35.60 ms maximum command-to-mixer
 response**, with the original sample reserve unchanged.
+
+After fixing steering/camera response and world-space sun projection, the GT3
+completed another onscreen 20-second CoreAudio check at 2560 x 1600: **60.00 FPS**,
+**0.51 ms CPU / 4.38 ms GPU**, zero missing frames/write/Metal errors, and 72
+rendered frames during a 1.2-second UI stall. The separate **103.75-second real
+audio game check** completed a clean lap, deliberate impact, recovery and
+acceleration with zero missing, silent or clipped PCM. Both forced UI/render
+stalls preserved driving physics and sound. Sun projection moved across the
+view and disappeared on the circuit; GPU PNGs were inspected without computer
+use. The 65 portable and 72 packaged tests passed, including steering response,
+release, countersteering, frame-independent motion and camera/sun geometry.
 
 The smoke harness detects early exits as failures by requiring the completed
 report and result marker:

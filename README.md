@@ -28,8 +28,9 @@ focuses on responsive sound and a native Mac interface.
   timers, a finish state and a minimap. Recover to the last checkpoint or start
   a new run without reloading the engine.
 - A detailed concept-car mesh, reflective paint, moving front wheels, body lean,
-  a spring chase camera and a large MPH/RPM/gear HUD. The engine simulation drives
+  a responsive chase camera and a large MPH/RPM/gear HUD. The engine simulation drives
   actual forward travel; road and wheel motion use metres.
+  The sun stays in the world, moving across the view as the car turns.
 - Audio production runs independently of the UI. The renderer consumes bounded
   snapshots; a slow or hidden window does not have to delay sound production.
 - Native Metal rendering, display-synchronized by default, with optional glow

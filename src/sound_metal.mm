@@ -318,8 +318,12 @@ public:
         quad(view,top);
         const auto begin=vertices.size()-6;
         vertices[begin+2].color=bottom;vertices[begin+4].color=bottom;vertices[begin+5].color=bottom;
-        if(s.effects)quad({865,113,150,150},color(0xF1C58D,.35f),2,{-1,-1},{1,1});
-        circle(940,188,25,color(0xFFE1B1));
+        const auto sun=roadScene.sunPosition(view.w,view.h);
+        if(sun.visible) {
+            const float x=float(sun.x),y=float(sun.y),radius=float(sun.radius),halo=radius*18;
+            if(s.effects)quad({x-halo,y-halo,halo*2,halo*2},color(0xF1C58D,.4f),2,{-1,-1},{1,1});
+            circle(x,y,radius,color(0xFFE9C4));
+        }
         roadScene.draw(view,
             [&](auto a,auto b,auto c,auto tint,unsigned kind) {
                 for(auto p:{a,b,c})vertices.push_back({{p.p.x,p.p.y},p.uv,tint,kind,p.p.z});
@@ -545,6 +549,8 @@ struct SoundMetalRenderer::Impl {
     std::atomic<uint64_t> audioBlocksSeen{0},visualBlocksSeen{0},animatedFrames{0},peakVertices{0};
     std::atomic<uint64_t> roadFrames{0},movingRoadFrames{0};
     std::atomic<double> roadDistance{0};
+    std::atomic<double> sunX{0},sunY{0};
+    std::atomic<bool> sunVisible{false};
     std::array<std::atomic<uint64_t>,256> cpuHist{},gpuHist{};
     std::atomic<unsigned> captured{0};
 
@@ -651,6 +657,8 @@ struct SoundMetalRenderer::Impl {
             auto presented=visual;const auto movement=vehicleMotion.advance(dt);
             presented.vehicleDistance=movement.distance;presented.vehicleSpeed=movement.speed;
             draw.roadScene.update(game.presented(),dt);
+            const auto sun=draw.roadScene.sunPosition(Width,Height);
+            sunX=sun.x;sunY=sun.y;sunVisible=sun.visible;
             draw.draw(current,audio ? audio->visualLayout() : empty,presented,dt,fps,cpu,gpu,rpm);
             if(current.roadView) {
                 ++roadFrames;if(presented.vehicleDistance>roadDistance.load()+.00001)++movingRoadFrames;
@@ -851,6 +859,7 @@ Metrics SoundMetalRenderer::metrics() const {
     result.frames=p.frames.load();result.cpuNs=p.cpuNs.load();result.gpuNs=p.gpuNs.load();result.errors=p.errors.load();
     result.audioBlocksSeen=p.audioBlocksSeen.load();result.visualBlocksSeen=p.visualBlocksSeen.load();result.animatedFrames=p.animatedFrames.load();result.peakVertices=p.peakVertices.load();
     result.roadFrames=p.roadFrames.load();result.movingRoadFrames=p.movingRoadFrames.load();result.roadDistance=p.roadDistance.load();
+    result.sunX=p.sunX.load();result.sunY=p.sunY.load();result.sunVisible=p.sunVisible.load();
     for(int i=0;i<256;++i){result.cpuHistogram[i]=p.cpuHist[i].load();result.gpuHistogram[i]=p.gpuHist[i].load();}
     return result;
 }

@@ -2,6 +2,7 @@
 #define ENGINE_SIM_SOUND_ROAD_SCENE_H
 #include "sound_metal.h"
 #include "driving_game.h"
+#include "driving_camera.h"
 #include <simd/simd.h>
 #include <algorithm>
 #include <array>
@@ -20,9 +21,7 @@ class SoundRoadScene {
     DrivingCourse track;
     DrivingSnapshot vehicle{};
     V3 camera{},forward{0,0,1},right{1,0,0},up{0,1,0};
-    float cameraYaw=0;
-    bool cameraReady=false;
-    double lastTime=-1;
+    DrivingCamera chase;
     sound_ui::UiRect viewport{};
     static constexpr float Pi=3.14159265358979323846f;
     static simd_float4 rgb(unsigned c) {return {float((c>>16)&255)/255,float((c>>8)&255)/255,float(c&255)/255,1};}
@@ -30,7 +29,7 @@ class SoundRoadScene {
         auto color=rgb(tint);
         if(shade) {
             auto normal=simd_normalize(simd_cross(b-a,c-a));
-            const float diffuse=.48f+.52f*std::abs(simd_dot(normal,simd_normalize(V3{-2,4,-3})));
+            const float diffuse=.48f+.52f*std::abs(simd_dot(normal,sunDirection().xyz));
             color*=diffuse;color.w=1;
         }
         faces.push_back({a,b,c,color,kind});
@@ -140,14 +139,15 @@ public:
     const DrivingCourse &course() const {return track;}
     const DrivingSnapshot &carPose() const {return vehicle;}
     void update(const DrivingSnapshot &pose,double dt) {
-        vehicle=pose;const float yaw=float(pose.yaw);
-        const V3 f{std::sin(yaw),0,std::cos(yaw)},r{f.z,0,-f.x},p{float(pose.x),0,float(pose.z)};
-        const V3 desired=p-f*8.4f+r*.38f+V3{0,2.55f,0};
-        const bool reset=!cameraReady || pose.time<lastTime || simd_length(camera-desired)>45;
-        if(reset) {camera=desired;cameraYaw=yaw;cameraReady=true;}
-        else {camera+=V3{float(std::sin(pose.velocityYaw)),0,float(std::cos(pose.velocityYaw))}*float(pose.speed*dt);camera+=(desired-camera)*float(1-std::exp(-dt*7));cameraYaw+=float(drivingAngle(yaw-cameraYaw)*(1-std::exp(-dt*6)));}
-        const V3 aim=p+V3{std::sin(cameraYaw)*9,.82f,std::cos(cameraYaw)*9};
-        forward=simd_normalize(aim-camera);right=simd_normalize(simd_cross(V3{0,1,0},forward));up=simd_cross(forward,right);lastTime=pose.time;
+        vehicle=pose;chase.update(pose,dt);
+        auto vector=[](DrivingCamera::Vector p) {return V3{float(p.x),float(p.y),float(p.z)};};
+        camera=vector(chase.position);forward=vector(chase.forward);right=vector(chase.right);up=vector(chase.up);
+    }
+    DrivingCamera::Projection sunPosition(double width,double height) const {return chase.sun(width,height);}
+    static simd_float4 sunDirection() {
+        constexpr auto d=DrivingCamera::SunDirection;
+        const auto p=simd_normalize(V3{float(d.x),float(d.y),float(d.z)});
+        return {p.x,p.y,p.z,0};
     }
     simd_float4 cameraPosition() const {return {camera.x,camera.y,camera.z,0};}
     simd_float4 cameraRight() const {return {right.x,right.y,right.z,0};}

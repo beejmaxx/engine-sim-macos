@@ -45,7 +45,7 @@ fragment float4 sound_fragment(Raster in [[stage_in]], texture2d<float> atlas [[
 }
 
 struct CarVertex { packed_float3 p,n;float2 uv;uint material,wheel; };
-struct CarUniforms { float4 camera,right,up,forward;float4 wheels[5];float4 motion,pose,suspension; };
+struct CarUniforms { float4 camera,right,up,forward;float4 wheels[5];float4 motion,pose,suspension,sun; };
 struct CarMaterial { float4 base,surface,emission; };
 struct CarRaster { float4 position [[position]];float3 world,normal;uint material [[flat]]; };
 vertex CarRaster car_vertex(uint id [[vertex_id]],const device CarVertex *mesh [[buffer(0)]],constant CarUniforms &u [[buffer(1)]]) {
@@ -85,7 +85,7 @@ fragment float4 car_fragment(CarRaster in [[stage_in]],constant CarUniforms &u [
         const device CarMaterial *materials [[buffer(2)]]) {
     CarMaterial m=materials[in.material];float3 n=normalize(in.normal),v=normalize(u.camera.xyz-in.world);
     if(dot(n,v)<0)n=-n;
-    float3 l=normalize(float3(-2,4,-3)),h=normalize(l+v);
+    float3 l=u.sun.xyz,h=normalize(l+v);
     float nv=max(.001,dot(n,v)),nl=max(.0,dot(n,l)),nh=max(.0,dot(n,h)),vh=max(.0,dot(v,h));
     float metallic=m.surface.x,rough=clamp(m.surface.y,.06,1.0),a=rough*rough,a2=a*a;
     float3 f0=mix(float3(.04),m.base.rgb,metallic),f=f0+(1-f0)*pow(1-vh,5.0);

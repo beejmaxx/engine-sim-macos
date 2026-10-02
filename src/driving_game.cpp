@@ -4,6 +4,7 @@
 namespace {
 DrivingPoint unit(DrivingPoint p) {return p*(1/std::max(1e-8,drivingLength(p)));}
 double heading(DrivingPoint p) {return std::atan2(p.x,p.z);}
+constexpr double Wheelbase=2.8, RearAxleDistance=1.4, Gravity=9.81;
 }
 DrivingCourse::DrivingCourse() {
     constexpr std::array<DrivingPoint,17> knots{{{0,0},{0,150},{65,260},{220,280},
@@ -44,9 +45,14 @@ void DrivingGame::restart() {
     const double best=state.bestLap;state={};state.bestLap=best;
     const auto spawn=track.at(2);state.x=spawn.point.x;state.z=spawn.point.z;
     state.yaw=state.velocityYaw=heading(spawn.forward);state.progress=previousProgress=2;
-    yawRate=lapStart=impactSeconds=recoverySeconds=0;newRacePending=false;
+    yawRate=impactSlip=lapStart=impactSeconds=recoverySeconds=0;newRacePending=false;
 }
 void DrivingGame::recover() {state.recovering=true;recoverySeconds=0;}
+double DrivingGame::steeringLock(double speed) {
+    // Keyboard full lock asks for a usable cornering force, rather than several
+    // times the available grip at speed. Low-speed manoeuvring still gets 32 deg.
+    return std::min(.55,std::atan(Wheelbase*.95*Gravity/(speed*speed+4)));
+}
 void DrivingGame::advance(double dt,double distance,double speed,double steering) {
     if(!std::isfinite(dt) || !std::isfinite(distance) || !std::isfinite(speed) || !std::isfinite(steering) || dt<=0)return;
     // A worker scheduling hiccup cannot create an unbounded catch-up workload.
@@ -60,17 +66,23 @@ void DrivingGame::step(double dt,double distance,double speed,double steering) {
     auto location=track.nearest({state.x,state.z});
     state.offroad=std::abs(location.lateral)>DrivingCourse::HalfWidth-.6;
     const double grip=state.offroad ? .48 : 1.12;
-    // Bicycle steering with speed-sensitive lock, finite tire grip and slip.
-    const double lock=std::min(.55,std::atan(2.8/(4+speed*.65)));
-    state.steer+=(steering*lock-state.steer)*(1-std::exp(-dt*9));
-    const double requested=speed/2.8*std::tan(state.steer);
-    const double limit=grip*9.81/std::max(1.0,speed);
-    yawRate+=(std::clamp(requested,-limit,limit)-yawRate)*(1-std::exp(-dt*7));
+    // One responsive rack filter. Releasing or countersteering centres faster;
+    // no extra yaw/heading filters can keep increasing the turn after release.
+    const double response=steering==0 ? 32 : (steering*state.steer<0 ? 24 : 18);
+    state.steer+=(steering*steeringLock(speed)-state.steer)*(1-std::exp(-dt*response));
+    // Centre-of-mass bicycle geometry: travel points slightly INTO the turn.
+    // The old delayed velocity heading pointed outside it and felt like ice.
+    const double tangent=std::tan(state.steer);
+    const double requested=tangent/(Wheelbase*std::sqrt(1+std::pow(RearAxleDistance/Wheelbase*tangent,2)));
+    const double curvature=std::clamp(requested,-grip*Gravity/std::max(1.0,speed*speed),grip*Gravity/std::max(1.0,speed*speed));
+    yawRate=speed*curvature;
+    const double beta=std::asin(std::clamp(RearAxleDistance*curvature,-1.0,1.0));
+    impactSlip*=std::exp(-dt*8);
+    const double travelYaw=state.yaw+yawRate*dt*.5+beta+impactSlip;
+    state.x+=std::sin(travelYaw)*distance;state.z+=std::cos(travelYaw)*distance;
     state.yaw=drivingAngle(state.yaw+yawRate*dt);
-    const double slipResponse=grip/(.055+speed*.004);
-    state.velocityYaw=drivingAngle(state.velocityYaw+drivingAngle(state.yaw-state.velocityYaw)*(1-std::exp(-dt*slipResponse)));
-    state.x+=std::sin(state.velocityYaw)*distance;state.z+=std::cos(state.velocityYaw)*distance;
-    state.lateralG=yawRate*speed/9.81;
+    state.velocityYaw=drivingAngle(state.yaw+beta+impactSlip);
+    state.lateralG=yawRate*speed/Gravity;
     state.roll+=(std::clamp(state.lateralG*.065,-.09,.09)-state.roll)*(1-std::exp(-dt*7));
     state.pitch+=(std::clamp(-acceleration*.004,-.045,.045)-state.pitch)*(1-std::exp(-dt*5));
     location=track.nearest({state.x,state.z});
@@ -85,6 +97,7 @@ void DrivingGame::step(double dt,double distance,double speed,double steering) {
         if(toward>0) {
             const auto rebound=unit(velocity-normal*(toward*1.22));
             state.velocityYaw=heading(rebound);state.yaw=drivingAngle(state.yaw+drivingAngle(state.velocityYaw-state.yaw)*.55);
+            impactSlip=drivingAngle(state.velocityYaw-state.yaw-beta);
             if(impactSeconds<=0 && speed>1) {++state.collisions;state.impact=std::clamp(toward*speed/18,.15,1.0);}
             impactSeconds=.24;yawRate*=.4;
         }
@@ -98,7 +111,7 @@ void DrivingGame::step(double dt,double distance,double speed,double steering) {
             const double checkpoint=(state.nextCheckpoint-1)*track.length()/8+2;
             const auto spawn=track.at(checkpoint);state.x=spawn.point.x;state.z=spawn.point.z;
             state.yaw=state.velocityYaw=heading(spawn.forward);state.steer=state.roll=state.pitch=0;
-            state.progress=previousProgress=checkpoint;state.lateral=0;state.offroad=false;state.impact=0;state.roadDeceleration=0;yawRate=0;state.recovering=false;
+            state.progress=previousProgress=checkpoint;state.lateral=0;state.offroad=false;state.impact=0;state.roadDeceleration=0;yawRate=impactSlip=0;state.recovering=false;
             ++state.recoveries;state.raceSeconds+=3;lapStart-=3;
             return;
         }
@@ -128,8 +141,8 @@ double DrivingGame::pilotSteering() const {
     const auto here=track.nearest({state.x,state.z});
     const auto target=track.at(here.distance+std::clamp(8+state.speed*.7,10.0,48.0)).point;
     const double angle=drivingAngle(heading(target-DrivingPoint{state.x,state.z})-state.yaw);
-    const double wheel=std::atan(2.8*2*std::sin(angle)/std::max(2.0,drivingLength(target-DrivingPoint{state.x,state.z})));
-    const double lock=std::min(.55,std::atan(2.8/(4+state.speed*.65)));
+    const double wheel=std::atan(Wheelbase*2*std::sin(angle)/std::max(2.0,drivingLength(target-DrivingPoint{state.x,state.z})));
+    const double lock=steeringLock(state.speed);
     return std::clamp(wheel/lock,-1.0,1.0);
 }
 double DrivingGame::pilotSpeed() const {

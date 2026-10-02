@@ -51,10 +51,11 @@ public:
     double pilotSteering() const;
     double pilotSpeed() const;
 private:
+    static double steeringLock(double speed);
     void step(double dt,double distance,double speed,double steering);
     DrivingCourse track;
     DrivingSnapshot state{};
-    double yawRate=0,lapStart=0,previousProgress=0,impactSeconds=0,recoverySeconds=0;
+    double yawRate=0,impactSlip=0,lapStart=0,previousProgress=0,impactSeconds=0,recoverySeconds=0;
     bool newRacePending=false;
 };
 #endif

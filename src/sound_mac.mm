@@ -62,6 +62,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     Metrics _gameBefore;
     GameAudioProbe _gameAudio;
     double _testThrottle,_testBrake;
+    bool _gameSunMoved,_gameSunHidden;
+    double _gameSunTurnX;
     bool _revPending, _brakePending;
     id _activity;
     State _state;
@@ -745,9 +747,16 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     if(_testStage==0 && t>3) {
         [self check:_gameAudio.attach(_session->device()) name:"game_pcm_probe_attached"];
         _benchMeasured=true;_benchAt=now();_benchMetrics=metrics;_benchAudio=_session->statistics();
+        [self check:metrics.sunVisible name:"world_sun_visible_at_start"];
+        _renderer.capture((_options.gameTest+"-sun-start.png").c_str());
         _state.testPilot=true;_testStage=1;
     }
     if(_testStage>=1 && _testStage<=4) {
+        if(!_gameSunMoved && metrics.sunVisible && std::abs(metrics.sunX-_benchMetrics.sunX)>120) {
+            _gameSunMoved=true;_gameSunTurnX=metrics.sunX;
+            _renderer.capture((_options.gameTest+"-sun-turn.png").c_str());
+        }
+        if(!metrics.sunVisible)_gameSunHidden=true;
         const double error=metrics.gameTargetSpeed-engine.vehicleSpeed;
         const double rawBrake=std::clamp(-error*.3,0.0,.85);
         const double brake=rawBrake>.04 ? rawBrake : 0;
@@ -794,6 +803,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     [self check:_gameAudio.frames>44100 && _gameAudio.silentBlocks==0 && _gameAudio.invalidSamples==0 name:"game_continuous_valid_pcm"];
     [self check:_gameAudio.clippedSamples==0 name:"game_no_clipped_pcm"];
     [self check:metrics.errors==0 name:"game_no_metal_errors"];
+    [self check:_gameSunMoved && _gameSunHidden name:"world_sun_moves_and_leaves_view_on_circuit"];
     const double seconds=now()-_benchAt;const uint64_t frames=metrics.frames-_benchMetrics.frames;
     std::ofstream report(_options.gameTest+".json");
     report<<std::fixed<<std::setprecision(4)<<"{\n  \"result\": \""<<(_passed ? "PASS" : "FAIL")<<"\",\n"
@@ -804,6 +814,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         <<",\n  \"laps\": "<<metrics.game.laps<<",\n  \"best_lap_seconds\": "<<metrics.game.bestLap
         <<",\n  \"collisions\": "<<metrics.game.collisions<<",\n  \"recoveries\": "<<metrics.game.recoveries
         <<",\n  \"game_steps\": "<<metrics.game.steps<<",\n  \"missing_audio_frames\": "<<audio.silenceFrames-_benchAudio.silenceFrames
+        <<",\n  \"sun_start_x\": "<<_benchMetrics.sunX<<",\n  \"sun_turn_x\": "<<_gameSunTurnX
+        <<",\n  \"sun_left_view\": "<<(_gameSunHidden ? "true" : "false")
         <<",\n  \"silent_pcm_blocks\": "<<_gameAudio.silentBlocks.load()<<",\n  \"clipped_pcm_samples\": "<<_gameAudio.clippedSamples.load()
         <<",\n  \"max_audio_cpu_block_ms\": "<<engine.maxCpuBlockMs
         <<",\n  \"metal_errors\": "<<metrics.errors<<"\n}\n";

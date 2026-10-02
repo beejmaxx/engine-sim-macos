@@ -92,6 +92,8 @@ struct Metrics {
     double roadDistance = 0;
     DrivingSnapshot game{};
     double gameCpuMs=0,gameTargetSpeed=0;
+    double sunX=0,sunY=0;
+    bool sunVisible=false;
     std::array<std::uint64_t, 256> cpuHistogram{}, gpuHistogram{};
 };
 }
