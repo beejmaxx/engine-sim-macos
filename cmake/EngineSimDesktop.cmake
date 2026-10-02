@@ -1,3 +1,10 @@
+if(APPLE)
+    # Initialize these in our directory before fetched SDL enables them in its
+    # child directory. Otherwise CMake marks the languages globally enabled but
+    # leaves this directory without compile rules on a clean first configure.
+    enable_language(OBJC OBJCXX)
+endif()
+
 include(cmake/EngineSimSDL.cmake)
 engine_sim_require_sdl3()
 
@@ -33,7 +40,6 @@ if(UNIX AND ENGINE_SIM_BUILD_SCRIPTING)
 endif()
 
 if(APPLE AND ENGINE_SIM_BUILD_SCRIPTING)
-    enable_language(OBJCXX)
     find_program(ENGINE_SIM_XCRUN xcrun REQUIRED)
     add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/sound_ui.metallib"
         COMMAND "${ENGINE_SIM_XCRUN}" -sdk macosx metal -c "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/sound_ui.metal"
