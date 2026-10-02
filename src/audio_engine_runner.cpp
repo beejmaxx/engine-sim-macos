@@ -51,6 +51,8 @@ bool AudioEngineRunner::start(Simulator &simulator, double reserveSeconds, bool 
     m_ignition = false; m_cranking = false; m_blipping = false;
     m_drive = false; m_shifting = false; m_gear = -1;
     m_vehicleSpeed = 0; m_clutch = 0; m_brake = 0; m_appliedThrottle = 0;
+    m_vehicleSequence=0;m_vehicleTime=0;m_vehicleDistance=0;m_gameSpeed=0;
+    m_roadDeceleration=0;m_roadLoadUntil=0;
     m_thread = std::thread(&AudioEngineRunner::run, this);
     const auto deadline = SDL_GetTicks() + 10000;
     while (!m_ready && SDL_GetTicks() < deadline) SDL_Delay(1);
@@ -72,6 +74,19 @@ AudioEngineRunner::Snapshot AudioEngineRunner::snapshot() const {
         m_ignition.load(), m_cranking.load(), m_blipping.load(),
         m_vehicleSpeed.load(), m_clutch.load(), m_brake.load(), m_appliedThrottle.load(),
         m_gear.load(), m_drive.load(), m_shifting.load()};
+}
+
+bool AudioEngineRunner::vehicleTelemetry(VehicleTelemetry &value) const {
+    for(int attempt=0;attempt<3;++attempt) {
+        const auto before=m_vehicleSequence.load();if(before&1)continue;
+        VehicleTelemetry copy{m_vehicleTime.load(),m_vehicleDistance.load(),m_gameSpeed.load()};
+        if(before==m_vehicleSequence.load()) {value=copy;return true;}
+    }
+    return false; // Keep previous game state; the audio producer never retries.
+}
+void AudioEngineRunner::setRoadDeceleration(double value) {
+    m_roadDeceleration.store(std::isfinite(value) ? std::clamp(value,0.0,45.0) : 0);
+    m_roadLoadUntil.store(m_simulatedSeconds.load()+.2);
 }
 
 void AudioEngineRunner::run() {
@@ -194,6 +209,7 @@ void AudioEngineRunner::run() {
         }
         sim.m_starterMotor.m_enabled = starterSeconds > 0;
         vehicle.setBrake(brake);
+        vehicle.setRoadDeceleration(simulatedSeconds<m_roadLoadUntil.load() ? m_roadDeceleration.load() : 0);
         const double requested = std::max(brake > 0 ? 0 : throttle,
             std::max(starterSeconds > 0 ? starterThrottle : 0, brake == 0 && blipSeconds > 0 ? blipThrottle : 0));
         const double applied = automatic.update(transmission, engine, vehicle, requested, starterSeconds > 0, 0.005);
@@ -223,6 +239,9 @@ void AudioEngineRunner::run() {
         m_brake = brake; m_appliedThrottle = applied; m_gear = transmission.getGear();
         m_drive = automatic.enabled(); m_shifting = automatic.shifting();
         m_simulatedSeconds = simulatedSeconds;
+        ++m_vehicleSequence;
+        m_vehicleTime=simulatedSeconds;m_vehicleDistance=vehicle.getTravelledDistance();m_gameSpeed=vehicle.getSpeed();
+        ++m_vehicleSequence;
     }
 }
 

@@ -45,37 +45,49 @@ remains a persistent pedal setting. Manual clutch/gear control and the dyno
 exit automatic mode. Drive works with the scripted forward gears; there is no
 reverse gear or separately simulated torque converter.
 
-## Driving view
+## Driving game
 
-`V` switches between the full-window driving scene and the engine dashboard.
-`--road` selects the driving view on launch. A large MPH readout, RPM arc and gear
-indicator show the simulated vehicle state; the same pedal controls work in both
-views. Hidden dashboard controls are excluded from hit testing and keyboard focus.
+`V` switches between the game and engine dashboard. `--road` selects the game
+on launch. Left/right steer, R/W/up accelerate, S/down brake, C recovers, and
+Backspace starts a new run. Pedals and steering release on focus loss. The game
+reserves arrow keys for driving even when a dashboard slider previously had focus.
 
-Scenery in `src/sound_road_scene.h` is measured in metres: lanes are 3.5 m wide,
-paint repeats every 12 m, and roadside posts every 16 m. Trees occupy persistent
-world cells, so they keep their identity and scale as the camera passes them.
-Road textures, markings, scenery and wheel rotation share the vehicle's published
-travel distance. `VehicleVisualMotion` interpolates a short snapshot history on
-the display clock (about 25 ms behind physics), smoothing the 5 ms worker steps
-without inventing speed. It stops at the newest snapshot if physics stops.
-A portable test verifies that 60 mph advances 268.224 m in ten seconds with
-uniform frame-to-frame motion at 60 Hz. Another checks that stopped data cannot drift.
+`engine-sim-driving` is a device-independent library with a closed Catmull-Rom
+forest circuit in metres and a simple chassis model. It uses bicycle steering,
+speed-sensitive wheel lock, limited lateral grip, a slip response, body roll/pitch,
+and barrier projection/rebound. The engine's vehicle distance and speed supply
+longitudinal movement. The track is 11 m wide, with barriers at 8.5 m from its
+centre. Off-road resistance and impacts add bounded opposing force to the existing
+vehicle drag constraint, so slowing down remains part of the engine/drivetrain
+simulation. This is approximate game handling, not a calibrated tire/suspension model.
 
-`src/sound_car_metal.h` uploads the credited concept-car model once: 162,766
-vertices and 213,347 triangles, with authored normals and material factors.
-Metal transforms and lights it with reflective paint, dark glass and brake lamps;
-the CPU does not expand the car triangles each frame. The wheels roll according
-to the mesh's visible radius. Mipmapped pine-grove image planes provide foliage
-without rendering millions of tree triangles. A depth buffer resolves the scene.
-See [asset credits](../THIRD_PARTY_NOTICES.md) for licenses and import details.
+Eight ordered forward checkpoints validate each lap. Crossing the finish backwards
+or circling near the start cannot award laps. Three laps finish the time trial.
+Recovery brakes to a stop before teleporting to the last checkpoint and adds a
+three-second penalty. A new run preserves the session's best lap. Timers use the
+engine clock; time keeps advancing during GUI/render stalls and while hidden.
 
-All of this stays on the render side of the bounded snapshot queue. It adds no
-physics thread or audio synchronization. PNG readbacks are encoded on a separate
-utility queue after GPU completion, so capturing evidence does not stall frames.
-The same generic concept car is used for every engine; this is a straight-road
-sound visualization without steering or manufacturer-specific bodywork. The
-lighting is approximate, and the trees are image planes rather than full 3D trees.
+`DrivingGameWorker` runs separately at 120 Hz. It samples coherent atomic vehicle
+telemetry and sends a latest-value road-resistance value with a 200 ms expiry.
+The engine worker never takes a game/render lock or waits for a game update.
+The audio device callback is unchanged. A stopped game worker lets the external
+load expire; a stopped renderer cannot freeze steering or collision detection.
+Game snapshots are interpolated for presentation, about one game tick behind;
+frames never advance physics. The game worker has bounded catch-up work.
+
+`src/sound_road_scene.h` owns static metre-scaled track/scenery geometry and a
+spring chase camera with velocity feed-forward. It clips/culls scenery on the
+render thread. Textures, curbs, barriers and checkpoint markers remain in world
+coordinates. `src/sound_car_metal.h` uploads the credited concept-car mesh once
+(162,766 vertices, 213,347 triangles). Metal steers/rolls the wheels and transforms
+and lights the body. Mipmapped image planes supply foliage; a depth buffer resolves
+the scene. The dashboard uses one draw call; the game uses three (scenery, car, HUD).
+PNG encoding runs on a utility queue after GPU readback. See
+[asset credits](../THIRD_PARTY_NOTICES.md) for sources/licenses.
+
+The game has one circuit, a shared concept-car body, forward driving, and a time
+trial mode. It does not yet have opponents, reverse, a handbrake or car-specific
+bodywork. The game/test pilot is only enabled by validation flags, never normal play.
 
 ## Programmatic checks
 
@@ -121,6 +133,24 @@ To check the car, actual braking, and sound together:
 This accelerates, blocks AppKit while the car continues moving, then applies
 the brakes and verifies that road travel stops. It captures idle, acceleration,
 braking, and stopped PNGs directly from Metal, plus frame/audio counters in JSON.
+
+For a complete programmatic circuit/impact/recovery and audio check:
+
+```sh
+./run-sound-gui.sh --preset porsche_911_gt3 \
+  --game-test "$PWD/build/audio-validation/gt3-game" \
+  --log "$PWD/build/audio-validation/gt3-game-playback.log"
+```
+
+This uses a test-only steering pilot and timed pedal commands. It completes a
+lap, deliberately drives into a barrier, recovers and drives again. It separately
+stalls AppKit and the renderer for 1.2 seconds each, checks that game physics and
+PCM continue, and writes JSON, logs and Metal PNGs. A test-only software-mixer
+observer checks missing, silent, nonfinite and clipped output without changing
+PCM. Add `--offscreen --silent` for hidden dummy audio. Portable game tests cover
+three-lap finish detection, grip limits, barrier containment, recovery, invalid
+inputs, no-motion data and resistance forces. Native tests cover steering/pedal
+holds, releases, focus changes and engine switching.
 
 For an audio-only acceleration/shift/braking test, including PCM and driving
 telemetry capture:
@@ -171,6 +201,27 @@ The full-window scene with the detailed car mesh and forest completed a newer
 It completed 72 frames during the 1.2-second AppKit stall and correctly stopped
 road travel after braking. A separate dummy-audio run averaged 60.00 FPS.
 These software measurements do not establish downstream device/acoustic latency.
+
+The playable forest circuit completed a 20-second GT3/CoreAudio onscreen run at
+2560 x 1600 with **60.00 completed FPS**, **0.48 ms CPU / 4.30 ms GPU** per frame,
+zero missing audio frames and zero Metal errors. It completed 72 frames during a
+1.2-second AppKit stall. The native steering/pedal/focus suite passed on all seven
+tested engines. A separate **104.8-second CoreAudio game check** completed a clean
+lap, deliberate barrier impacts, recovery and another acceleration, with zero
+missing audio frames, silent PCM blocks, clipped PCM samples or Metal errors.
+Both 1.2-second forced UI/render stalls preserved game physics and sound.
+The separate audio-only start/rev/restart/switch check passed with zero missing,
+clipped or unexpected silent output and **35.60 ms maximum command-to-mixer
+response**, with the original sample reserve unchanged.
+
+The smoke harness detects early exits as failures by requiring the completed
+report and result marker:
+
+```sh
+python3 test/sound_gui_smoke.py --game-only --presets porsche_911_gt3
+# Makes sound through the system output:
+python3 test/sound_gui_smoke.py --game-only --real-audio --presets porsche_911_gt3
+```
 
 Separate 41-second automatic-driving audio checks passed for the Supra on the
 dummy device and GT3 on CoreAudio: five upshifts each, actual RPM drops and

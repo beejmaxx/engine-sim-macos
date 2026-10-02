@@ -54,10 +54,10 @@ if(APPLE AND ENGINE_SIM_BUILD_SCRIPTING)
     add_custom_target(engine-sim-sound-shaders DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/sound_ui.metallib")
     add_executable(engine-sim-sound MACOSX_BUNDLE
         src/sound_mac.mm src/sound_metal.mm src/authored_mesh_library.cpp src/sound_session.cpp src/sound_verify.cpp src/engine_catalog.cpp
-        src/audio_engine_runner.cpp src/runtime_paths.cpp
+        src/audio_engine_runner.cpp src/runtime_paths.cpp src/driving_game_worker.cpp
         src/sdl_audio_util.cpp src/sdl_audio_output.cpp)
     target_link_libraries(engine-sim-sound PRIVATE
-        SDL3::SDL3 engine-sim-scripting engine-sim::core "-framework Cocoa" "-framework Metal" "-framework MetalKit" "-framework QuartzCore" "-framework CoreText" "-framework CoreVideo")
+        SDL3::SDL3 engine-sim-scripting engine-sim::core engine-sim-driving "-framework Cocoa" "-framework Metal" "-framework MetalKit" "-framework QuartzCore" "-framework CoreText" "-framework CoreVideo")
     add_dependencies(engine-sim-sound engine-sim-sound-shaders)
     target_compile_options(engine-sim-sound PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
     target_include_directories(engine-sim-sound PRIVATE "${ENGINE_SIM_GENERATED_INCLUDE_DIRECTORY}")

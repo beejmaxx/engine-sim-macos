@@ -1,6 +1,7 @@
 #ifndef ENGINE_SIM_SOUND_METAL_H
 #define ENGINE_SIM_SOUND_METAL_H
 #include "audio_engine_runner.h"
+#include "driving_game.h"
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -8,7 +9,7 @@
 namespace sound_ui {
 constexpr float Width = 1280, Height = 800;
 enum Control { None = -1, Supra, Ls, Start, Rev, Idle, Throttle, Volume, Exhaust,
-    Roughness, Mute, Reset, Effects, Uncapped, Library, HighFrequency, LowNoise, Dyno, DynoSpeed, Clutch, GearDown, GearUp, LayerBack, LayerNext, Drive, Brake, RoadView, ControlCount };
+    Roughness, Mute, Reset, Effects, Uncapped, Library, HighFrequency, LowNoise, Dyno, DynoSpeed, Clutch, GearDown, GearUp, LayerBack, LayerNext, Drive, Brake, RoadView, RecoverCar, RestartRace, ControlCount };
 struct UiRect {
     float x, y, w, h;
     bool contains(float px, float py) const { return px >= x && py >= y && px < x+w && py < y+h; }
@@ -26,6 +27,8 @@ inline UiRect bounds(Control control,bool roadView=false) {
         case Idle:return {381,741,84,35};
         case Mute:return {477,741,84,35};
         case Throttle:return {24,651,340,25};
+        case RecoverCar:return {573,741,112,35};
+        case RestartRace:return {697,741,139,35};
         default:return {};
         }
     }
@@ -76,6 +79,8 @@ struct State {
     int preset = 0, layer = 0;
     float highFrequency=0, lowNoise=0, dynoRpm=1000, clutch=0;
     bool dyno=false, revHeld=false, drive=false, brakeHeld=false, roadView=false;
+    float steering=0;
+    bool testPilot=false;
     Control hover = None, focus = None, pressed = None;
     bool ready = false, loading = true, ignitionRequested = false, muted = false;
     bool effects = true, uncapped = false, silent = false, active = true, automated = false;
@@ -85,6 +90,8 @@ struct Metrics {
     std::uint64_t audioBlocksSeen = 0, visualBlocksSeen = 0, animatedFrames = 0, peakVertices = 0;
     std::uint64_t roadFrames = 0, movingRoadFrames = 0;
     double roadDistance = 0;
+    DrivingSnapshot game{};
+    double gameCpuMs=0,gameTargetSpeed=0;
     std::array<std::uint64_t, 256> cpuHistogram{}, gpuHistogram{};
 };
 }
@@ -100,6 +107,9 @@ public:
     void stop();
     void update(const sound_ui::State &state);
     void connectSession(std::shared_ptr<SoundSession> session);
+    void recoverCar();
+    void restartRace();
+    void stallRendering(unsigned milliseconds);
     sound_ui::Metrics metrics() const;
     void capture(const char *path);
     unsigned captures() const;

@@ -54,3 +54,7 @@ double Vehicle::linearForceToVirtualTorque(double force) const {
 void Vehicle::setBrake(double pressure) {
     m_brake = std::isfinite(pressure) ? std::clamp(pressure, 0.0, 1.0) : 0;
 }
+
+void Vehicle::setRoadDeceleration(double value) {
+    m_roadDeceleration = std::isfinite(value) ? std::clamp(value, 0.0, 45.0) : 0;
+}

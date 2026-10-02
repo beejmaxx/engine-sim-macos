@@ -45,17 +45,28 @@ fragment float4 sound_fragment(Raster in [[stage_in]], texture2d<float> atlas [[
 }
 
 struct CarVertex { packed_float3 p,n;float2 uv;uint material,wheel; };
-struct CarUniforms { float4 camera,right,up,forward;float4 wheels[5];float4 motion; };
+struct CarUniforms { float4 camera,right,up,forward;float4 wheels[5];float4 motion,pose,suspension; };
 struct CarMaterial { float4 base,surface,emission; };
 struct CarRaster { float4 position [[position]];float3 world,normal;uint material [[flat]]; };
 vertex CarRaster car_vertex(uint id [[vertex_id]],const device CarVertex *mesh [[buffer(0)]],constant CarUniforms &u [[buffer(1)]]) {
     CarVertex v=mesh[id];float3 p=v.p,n=v.n;
     if(v.wheel>0 && v.wheel<5) {
         float3 center=u.wheels[v.wheel].xyz;float c=cos(u.motion.x),s=sin(u.motion.x);
-        p-=center;p.yz=float2(c*p.y-s*p.z,s*p.y+c*p.z);p+=center;
+        p-=center;p.yz=float2(c*p.y-s*p.z,s*p.y+c*p.z);
         n.yz=float2(c*n.y-s*n.z,s*n.y+c*n.z);
+        if(v.wheel<=2) {
+            c=cos(u.motion.z);s=sin(u.motion.z);
+            p.xz=float2(c*p.x+s*p.z,-s*p.x+c*p.z);n.xz=float2(c*n.x+s*n.z,-s*n.x+c*n.z);
+        }
+        p+=center;
     }
-    p.x+=1.75;
+    float c=cos(u.suspension.x),s=sin(u.suspension.x);
+    p.yz=float2(c*p.y-s*p.z,s*p.y+c*p.z);n.yz=float2(c*n.y-s*n.z,s*n.y+c*n.z);
+    c=cos(u.suspension.y);s=sin(u.suspension.y);
+    p.xy=float2(c*p.x-s*p.y,s*p.x+c*p.y);n.xy=float2(c*n.x-s*n.y,s*n.x+c*n.y);
+    c=cos(u.pose.w);s=sin(u.pose.w);
+    p.xz=float2(c*p.x+s*p.z,-s*p.x+c*p.z);n.xz=float2(c*n.x+s*n.z,-s*n.x+c*n.z);
+    p+=u.pose.xyz;
     float3 relative=p-u.camera.xyz;
     float3 eye=float3(dot(relative,u.right.xyz),dot(relative,u.up.xyz),dot(relative,u.forward.xyz));
     CarRaster out;out.position=float4(eye.x*1.25,eye.y*2+.04*eye.z,eye.z-.25,eye.z);

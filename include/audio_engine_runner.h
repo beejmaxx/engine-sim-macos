@@ -16,6 +16,7 @@ public:
     enum class Action { Start, Stop, Throttle, Volume, Blip, ExhaustMix, Roughness,
         HighFrequency, LowNoise, Dyno, DynoSpeed, Clutch, Gear, Drive, Brake };
     struct Command { Action action; double value = 0; };
+    struct VehicleTelemetry { double time=0,distance=0,speed=0; };
     struct Snapshot {
         double rpm, simulatedSeconds, queuedMs, maxBlockMs, cpuSeconds, maxCpuBlockMs, maxWakeupOverrunMs;
         std::uint64_t blocks;
@@ -32,6 +33,8 @@ public:
     void stop();
     bool command(Command command) { return m_run && m_commands.push(command); }
     Snapshot snapshot() const;
+    bool vehicleTelemetry(VehicleTelemetry &value) const;
+    void setRoadDeceleration(double value);
     void enableVisualTelemetry(bool enabled) { m_visualTelemetry=enabled; }
     bool readVisualTelemetry(EngineVisualSnapshot &snapshot) { return m_visuals.pop(snapshot); }
 
@@ -56,6 +59,11 @@ private:
     std::atomic<double> m_vehicleSpeed{0}, m_clutch{0}, m_brake{0}, m_appliedThrottle{0};
     std::atomic<int> m_gear{-1};
     std::atomic<bool> m_drive{false}, m_shifting{false};
+    // Latest-value game mailboxes. The producer never waits for gameplay or
+    // graphics. Atomic payload fields also make seqlock retries race-free.
+    std::atomic<unsigned> m_vehicleSequence{0};
+    std::atomic<double> m_vehicleTime{0},m_vehicleDistance{0},m_gameSpeed{0};
+    std::atomic<double> m_roadDeceleration{0},m_roadLoadUntil{0};
 };
 
 #endif

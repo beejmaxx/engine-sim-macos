@@ -32,6 +32,8 @@ public:
     bool startEngine();
     bool rev();
     AudioEngineRunner::Snapshot snapshot() const;
+    bool vehicleTelemetry(AudioEngineRunner::VehicleTelemetry &value) const;
+    void setRoadDeceleration(double value);
     SdlAudioOutput::Statistics statistics() const;
     SDL_AudioDeviceID device() const;
     bool readVisualization(SdlAudioOutput::VisualSamples &samples);

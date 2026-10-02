@@ -9,6 +9,7 @@
 #include "sound_session.h"
 #include "sound_road_scene.h"
 #include "vehicle_visual_motion.h"
+#include "driving_game_worker.h"
 #include "authored_mesh_library.h"
 #include "units.h"
 #include <SDL3/SDL.h>
@@ -309,6 +310,8 @@ public:
         right("LIVE PHYSICS",849,371,0,Dim);
     }
     void road(const State &s,const EngineVisualLayout &layout,const EngineVisualSnapshot &v,float rpm,float fps) {
+        (void)layout;
+        const auto &game=roadScene.carPose();
         const UiRect view{0,0,Width,Height};
         const auto top=color(0x21374E),bottom=color(0xE3B38C);
         // Smooth vertex-color gradient, cached geometry and a single draw.
@@ -317,7 +320,7 @@ public:
         vertices[begin+2].color=bottom;vertices[begin+4].color=bottom;vertices[begin+5].color=bottom;
         if(s.effects)quad({865,113,150,150},color(0xF1C58D,.35f),2,{-1,-1},{1,1});
         circle(940,188,25,color(0xFFE1B1));
-        roadScene.draw(view,v.vehicleDistance,layout.tireRadius,s.engine.brake>0,
+        roadScene.draw(view,
             [&](auto a,auto b,auto c,auto tint,unsigned kind) {
                 for(auto p:{a,b,c})vertices.push_back({{p.p.x,p.p.y},p.uv,tint,kind,p.p.z});
             });
@@ -327,10 +330,31 @@ public:
             quad({0,Height-240+i*10.f,Width,10},color(0x091321,.65f*i/24));
         }
         text("ENGINE SIMULATOR  /  DRIVE",26,24,0,0xD1DDE4);
-        text(s.title.data(),24,44,2);text("CHASE CAMERA",26,74,0,0xD1DDE4);
+        text(s.title.data(),24,44,2);text("FOREST CIRCUIT / 3 LAP TIME TRIAL",26,74,0,0xD1DDE4);
         button(Library,"ENGINES [E]",s);button(RoadView,"DASH [V]",s);
         char label[96];std::snprintf(label,sizeof(label),"%.0f FPS  /  %s",fps,s.missing ? "AUDIO GAPS" : "AUDIO OK");right(label,1254,68,0,s.missing ? Red : 0xD1DDE4);
         std::snprintf(label,sizeof(label),"%.2f KM",v.vehicleDistance/1000);right(label,1254,89,0,0xD1DDE4);
+        rounded({990,116,266,180},8,color(0x0C1721,.68f));
+        auto map=[&](DrivingPoint p) {return simd_float2{1009+float((p.x+215)*.395),132+float((300-p.z)*.25)};};
+        const auto &course=roadScene.course();const auto &path=course.points();
+        for(int i=0;i<DrivingCourse::Segments;++i) {const auto a=map(path[i]),b=map(path[i+1]);line(a.x,a.y,b.x,b.y,3,color(Ink,.45f));}
+        const auto checkpoint=map(course.at(game.nextCheckpoint*course.length()/8).point);
+        circle(checkpoint.x,checkpoint.y,4,color(Blue));const auto position=map({game.x,game.z});
+        const float heading=float(game.yaw),c=std::cos(heading),si=std::sin(heading);
+        triangle({position.x+si*7,position.y-c*7},{position.x-c*4-si*3,position.y-si*4+c*3},
+            {position.x+c*4-si*3,position.y+si*4+c*3},color(game.offroad ? Yellow : Ink));
+        text("LAP",26,114,0,Dim);std::snprintf(label,sizeof(label),"%u / 3",std::min(3u,game.laps+1));text(label,26,135,3);
+        auto timeLabel=[&](double seconds) {std::snprintf(label,sizeof(label),"%02d:%05.2f",int(seconds)/60,std::fmod(seconds,60));};
+        text("CURRENT",154,114,0,Dim);timeLabel(game.lapSeconds);text(label,154,137,2);
+        text("BEST",330,114,0,Dim);if(game.bestLap>0)timeLabel(game.bestLap);else std::snprintf(label,sizeof(label),"--:--.--");text(label,330,137,2);
+        std::snprintf(label,sizeof(label),"CHECKPOINT %u / 8",game.nextCheckpoint);text(label,26,178,0,0xD1DDE4);
+        if(game.wrongWay || game.recovering || game.finished) {
+            rounded({435,165,410,82},8,color(0x0C1721,.85f));
+            centered(game.finished ? "TIME TRIAL COMPLETE" : game.recovering ? "RECOVERING CAR" : "WRONG WAY",640,180,2,game.wrongWay ? Red : Ink);
+            if(game.finished) {timeLabel(game.raceSeconds);centered(label,640,211,1);}
+            else centered(game.recovering ? "Returning to the last checkpoint" : "Turn around to continue your lap",640,214,0);
+        }
+        if(game.impact>.05)quad(view,color(Red,float(game.impact*.13)));
         if(s.loading || !s.ready)centered(s.loading ? "LOADING ENGINE..." : "ENGINE UNAVAILABLE",640,180,2);
         const float cx=1121,cy=667,radius=109,start=140*Pi/180,span=260*Pi/180;
         const float limit=std::ceil(s.redline/1000)*1000,value=std::clamp(rpm/std::max(1000.f,limit),0.f,1.f);
@@ -343,7 +367,7 @@ public:
             line(cx+(radius-12)*std::cos(a),cy+(radius-12)*std::sin(a),cx+(radius-4)*std::cos(a),cy+(radius-4)*std::sin(a),1.5,color(Ink,.85f));
             std::snprintf(label,sizeof(label),"%d",i);centered(label,cx+(radius-25)*std::cos(a),cy+(radius-25)*std::sin(a)-7,0);
         }
-        std::snprintf(label,sizeof(label),"%.0f",std::max(0.f,v.vehicleSpeed/.44704f));centered(label,cx,623,4);
+        std::snprintf(label,sizeof(label),"%.0f",float(std::max(0.0,game.speed/.44704)));centered(label,cx,623,4);
         centered("MPH",cx,696,1,0xD1DDE4);
         std::snprintf(label,sizeof(label),"%.0f RPM",std::max(0.f,rpm));centered(label,cx,761,1);
         text("GEAR",936,684,0,0xD1DDE4);
@@ -355,10 +379,13 @@ public:
         line(x,y,x+w,y,3,color(Ink,.2f));line(x,y,x+w*std::sqrt(std::clamp(s.throttle,0.f,1.f)),y,3,color(Ink));
         circle(x+w*std::sqrt(std::clamp(s.throttle,0.f,1.f)),y,4,color(Ink));
         button(Drive,s.engine.drive ? "DRIVE [A]" : "NEUTRAL [A]",s,s.engine.drive);
-        text(s.engine.brake>0 ? "BRAKING" : s.engine.shifting ? "SHIFTING" : !s.engine.ignition ? "ENGINE OFF" : "HOLD R TO ACCELERATE",172,700,0,s.engine.brake>0 ? Red : Ink);
+        text(s.engine.brake>0 ? "BRAKING" : s.engine.shifting ? "SHIFTING" : !s.engine.ignition ? "ENGINE OFF" : "ARROWS STEER / R GAS / S BRAKE",172,700,0,s.engine.brake>0 ? Red : Ink);
         button(Start,s.ignitionRequested ? "STOP [SPACE]" : "START [SPACE]",s);
         button(Rev,"GAS [R]",s,s.revHeld);button(Brake,"BRAKE [S]",s,s.brakeHeld);
         button(Idle,"IDLE [I]",s);button(Mute,s.muted ? "UNMUTE" : "MUTE [M]",s,s.muted);
+        button(RecoverCar,"RECOVER [C]",s);button(RestartRace,"NEW RUN [BKSP]",s);
+        if(game.offroad)text("OFF ROAD / LOW GRIP",24,605,0,Yellow);
+        line(398,668,506,668,2,color(Ink,.25f));circle(452+float(game.steer)*85,668,5,color(Blue));text("STEERING",399,633,0,0xD1DDE4);
     }
     void draw(const State &s,const EngineVisualLayout &layout,const EngineVisualSnapshot &v,
             double dt,float fps,float cpuMs,float gpuMs,float displayedRpm) {
@@ -498,6 +525,8 @@ struct SoundMetalRenderer::Impl {
     std::atomic<bool> refreshPending{false};
     DrawList draw;
     SoundCarMetal car;
+    DrivingGameWorker game;
+    std::atomic<unsigned> renderStallMs{0};
     State state;
     EngineVisualSnapshot visual;
     VehicleVisualMotion vehicleMotion;
@@ -621,6 +650,7 @@ struct SoundMetalRenderer::Impl {
             const EngineVisualLayout empty;
             auto presented=visual;const auto movement=vehicleMotion.advance(dt);
             presented.vehicleDistance=movement.distance;presented.vehicleSpeed=movement.speed;
+            draw.roadScene.update(game.presented(),dt);
             draw.draw(current,audio ? audio->visualLayout() : empty,presented,dt,fps,cpu,gpu,rpm);
             if(current.roadView) {
                 ++roadFrames;if(presented.vehicleDistance>roadDistance.load()+.00001)++movingRoadFrames;
@@ -653,7 +683,7 @@ struct SoundMetalRenderer::Impl {
             [encoder setFragmentTexture:foliage atIndex:1];
             if(current.roadView) {
                 [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:draw.roadEnd];
-                car.draw(encoder,draw.roadScene,presented.vehicleDistance,current.engine.brake>0);
+                car.draw(encoder,draw.roadScene,draw.roadScene.carPose().wheelDistance,current.engine.brake>0);
                 [encoder setRenderPipelineState:pipeline];[encoder setVertexBuffer:buffers[slot] offset:0 atIndex:0];
                 [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:draw.roadEnd vertexCount:draw.vertices.size()-draw.roadEnd];
             } else [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:draw.vertices.size()];
@@ -736,6 +766,7 @@ struct SoundMetalRenderer::Impl {
                 refreshPending=false;
                 if(!running)break;
             }
+            const auto stalled=renderStallMs.exchange(0);if(stalled)std::this_thread::sleep_for(std::chrono::milliseconds(stalled));
             renderFrame(offscreen ? nil : [layer nextDrawable]);
             if(offscreen && !current.uncapped) {
                 deadline+=std::chrono::nanoseconds(16666667);
@@ -794,21 +825,29 @@ bool SoundMetalRenderer::start(CAMetalLayer *layer,bool offscreen,const char *as
         target.usage=MTLTextureUsageRenderTarget;target.storageMode=MTLStorageModePrivate;
         p.target=[p.device newTextureWithDescriptor:target];
     }
-    p.running=true;p.thread=std::thread([&p]{p.run();});return true;
+    p.game.start();p.running=true;p.thread=std::thread([&p]{p.run();});return true;
 }
 void SoundMetalRenderer::stop() {
+    m_impl->game.stop();
     m_impl->running=false;dispatch_semaphore_signal(m_impl->refresh);
     if(m_impl->thread.joinable())m_impl->thread.join();
     dispatch_group_wait(m_impl->captureJobs,DISPATCH_TIME_FOREVER);
     m_impl->session.reset();
 }
-void SoundMetalRenderer::update(const State &state) { std::lock_guard<std::mutex> lock(m_impl->stateMutex);m_impl->state=state; }
+void SoundMetalRenderer::update(const State &state) {
+    m_impl->game.controls(state.steering,state.roadView && state.ready,state.testPilot);
+    std::lock_guard<std::mutex> lock(m_impl->stateMutex);m_impl->state=state;
+}
+void SoundMetalRenderer::recoverCar() {m_impl->game.recover();}
+void SoundMetalRenderer::restartRace() {m_impl->game.restart();}
+void SoundMetalRenderer::stallRendering(unsigned ms) {m_impl->renderStallMs=std::min(ms,3000u);}
 void SoundMetalRenderer::connectSession(std::shared_ptr<SoundSession> session) {
+    m_impl->game.connect(session);
     std::lock_guard<std::mutex> lock(m_impl->stateMutex);
     m_impl->session=std::move(session);++m_impl->sessionGeneration;
 }
 Metrics SoundMetalRenderer::metrics() const {
-    const auto &p=*m_impl; Metrics result;
+    const auto &p=*m_impl; Metrics result;result.game=p.game.snapshot();result.gameCpuMs=p.game.cpuMilliseconds();result.gameTargetSpeed=p.game.targetSpeed();
     result.frames=p.frames.load();result.cpuNs=p.cpuNs.load();result.gpuNs=p.gpuNs.load();result.errors=p.errors.load();
     result.audioBlocksSeen=p.audioBlocksSeen.load();result.visualBlocksSeen=p.visualBlocksSeen.load();result.animatedFrames=p.animatedFrames.load();result.peakVertices=p.peakVertices.load();
     result.roadFrames=p.roadFrames.load();result.movingRoadFrames=p.movingRoadFrames.load();result.roadDistance=p.roadDistance.load();

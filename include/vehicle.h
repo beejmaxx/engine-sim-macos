@@ -33,6 +33,8 @@ class Vehicle {
         double linearForceToVirtualTorque(double force) const;
         void setBrake(double pressure);
         double getBrake() const { return m_brake; }
+        void setRoadDeceleration(double value);
+        double getRoadDeceleration() const { return m_roadDeceleration; }
 
     protected:
         atg_scs::RigidBody *m_rotatingMass;
@@ -45,6 +47,7 @@ class Vehicle {
         double m_travelledDistance;
         double m_rollingResistance;
         double m_brake = 0;
+        double m_roadDeceleration = 0;
 };
 
 #endif /* ATG_ENGINE_SIM_VEHICLE_H */

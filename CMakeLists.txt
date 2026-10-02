@@ -17,6 +17,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+add_library(engine-sim-driving STATIC src/driving_game.cpp)
+target_include_directories(engine-sim-driving PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "cmake")
 

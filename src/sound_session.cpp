@@ -216,6 +216,8 @@ bool SoundSession::command(AudioEngineRunner::Action action, double value) {
 bool SoundSession::startEngine() { return command(AudioEngineRunner::Action::Start, preset().startThrottle); }
 bool SoundSession::rev() { return command(AudioEngineRunner::Action::Blip, preset().revThrottle); }
 AudioEngineRunner::Snapshot SoundSession::snapshot() const { return m_impl ? m_impl->runner.snapshot() : AudioEngineRunner::Snapshot{}; }
+bool SoundSession::vehicleTelemetry(AudioEngineRunner::VehicleTelemetry &value) const {return m_ready && m_impl->runner.vehicleTelemetry(value);}
+void SoundSession::setRoadDeceleration(double value) {if(m_ready)m_impl->runner.setRoadDeceleration(value);}
 SdlAudioOutput::Statistics SoundSession::statistics() const { return m_impl ? m_impl->output.statistics() : SdlAudioOutput::Statistics{}; }
 SDL_AudioDeviceID SoundSession::device() const { return m_ready ? m_impl->output.device() : 0; }
 bool SoundSession::readVisualization(SdlAudioOutput::VisualSamples &samples) {

@@ -10,7 +10,7 @@ class SoundCarMetal {
     struct Uniforms {
         simd_float4 camera,right,up,forward;
         std::array<simd_float4,5> wheels;
-        simd_float4 motion;
+        simd_float4 motion,pose,suspension;
     };
     id<MTLBuffer> vertices=nil,indices=nil,materials=nil;
     id<MTLRenderPipelineState> pipeline=nil;
@@ -42,8 +42,10 @@ public:
         return pipeline!=nil;
     }
     void draw(id<MTLRenderCommandEncoder> encoder,const SoundRoadScene &scene,double distance,bool brake) {
+        const auto &p=scene.carPose();
         Uniforms u{scene.cameraPosition(),scene.cameraRight(),scene.cameraUp(),scene.cameraForward(),wheels,
-            {float(std::fmod(distance/.383759,6.28318530718)),brake ? 1.f : 0.f,0,0}};
+            {float(std::fmod(distance/.383759,6.28318530718)),brake ? 1.f : 0.f,float(p.steer),0},
+            {float(p.x),.025f,float(p.z),float(p.yaw)},{float(p.pitch),float(p.roll),0,0}};
         [encoder setRenderPipelineState:pipeline];[encoder setVertexBuffer:vertices offset:0 atIndex:0];
         [encoder setVertexBytes:&u length:sizeof(u) atIndex:1];
         [encoder setFragmentBytes:&u length:sizeof(u) atIndex:1];[encoder setFragmentBuffer:materials offset:0 atIndex:2];

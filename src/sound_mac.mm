@@ -3,6 +3,7 @@
 #include "runtime_paths.h"
 #include "sound_session.h"
 #include "sound_metal.h"
+#include "game_audio_probe.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <atomic>
@@ -19,7 +20,7 @@ using namespace sound_ui;
 namespace {
 struct Options {
     std::filesystem::path assets;
-    std::string log, verify, driveVerify, benchmark, uiTest;
+    std::string log, verify, driveVerify, benchmark, uiTest, gameTest;
     int preset=0, stall=1000;
     double seconds=12;
     bool play=false, drive=false, roadView=false, uncapped=false, offscreen=false, effects=true, silent=false;
@@ -56,6 +57,11 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     NSTimer *_timer;
     NSMenuItem *_engineMenuItem;
     unsigned _heldRev, _heldBrake;
+    bool _steerLeft,_steerRight;
+    double _gamePhaseAt;
+    Metrics _gameBefore;
+    GameAudioProbe _gameAudio;
+    double _testThrottle,_testBrake;
     bool _revPending, _brakePending;
     id _activity;
     State _state;
@@ -82,6 +88,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (void)holdRev:(BOOL)down source:(unsigned)source;
 - (void)holdBrake:(BOOL)down source:(unsigned)source;
 - (void)cancelHeldRev;
+- (void)steer:(BOOL)down right:(BOOL)right;
+- (void)gameTest:(double)t;
 - (NSMenu *)engineMenu;
 - (State)currentState;
 - (int)exitCode;
@@ -154,10 +162,19 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         [self.controller key:characters shift:(event.modifierFlags & NSEventModifierFlagShift)!=0];
 }
 - (void)keyUp:(NSEvent *)event {
+    if(!event.charactersIgnoringModifiers.length)return;
     if([event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"r"])
         [self.controller holdRev:NO source:1];
     else if([event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"s"])
         [self.controller holdBrake:NO source:1];
+    else if([event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"w"] || [event.charactersIgnoringModifiers characterAtIndex:0]==NSUpArrowFunctionKey)
+        [self.controller holdRev:NO source:8];
+    else if([event.charactersIgnoringModifiers characterAtIndex:0]==NSDownArrowFunctionKey)
+        [self.controller holdBrake:NO source:8];
+    else if([event.charactersIgnoringModifiers characterAtIndex:0]==NSLeftArrowFunctionKey)
+        [self.controller steer:NO right:NO];
+    else if([event.charactersIgnoringModifiers characterAtIndex:0]==NSRightArrowFunctionKey)
+        [self.controller steer:NO right:YES];
     else if([event.charactersIgnoringModifiers isEqualToString:@"\r"])
         [self.controller holdBrake:NO source:4];
     else [super keyUp:event];
@@ -202,13 +219,14 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (instancetype)initWithOptions:(const Options &)options {
     if((self=[super init])) {
         _options=options;_loadReady=false;_passed=true;
-        _benchAudio={};_benchMetrics={};
+        _benchAudio={};_benchMetrics={};_testThrottle=_testBrake=-1;
         _state.preset=options.preset;_state.uncapped=options.uncapped;_state.effects=options.effects;
         _state.roadView=options.roadView;
         _state.engineCount=SoundSession::presets().size();
         _state.volume=SoundSession::DefaultVolume;
         _state.silent=std::string(SDL_GetCurrentAudioDriver())=="dummy";
-        _state.automated=!options.uiTest.empty() || !options.benchmark.empty();
+        _state.automated=!options.uiTest.empty() || !options.benchmark.empty() || !options.gameTest.empty();
+        _state.testPilot=options.drive && !options.benchmark.empty();
         if(!options.log.empty())_log.open(options.log);
     }
     return self;
@@ -257,7 +275,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (void)loadPreset:(int)preset {
     if(_closing || _loader.joinable())return;
     [self cancelHeldRev];_heldRev=0;_revPending=false;_state.revHeld=false;
-    [self holdBrake:NO source:7];_heldBrake=0;_brakePending=false;_state.brakeHeld=false;_state.drive=false;
+    [self holdBrake:NO source:15];[self steer:NO right:NO];[self steer:NO right:YES];_heldBrake=0;_brakePending=false;_state.brakeHeld=false;_state.drive=false;
     _state.loading=true;_state.ready=false;_state.ignitionRequested=false;_state.preset=preset;
     _engineMenuItem.submenu=[self engineMenu];
     put(_state.title,SoundSession::presets()[preset].title);
@@ -310,7 +328,11 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     if(_log)_log<<"held_throttle="<<_state.throttle<<std::endl;
     [self publish];
 }
-- (void)cancelHeldRev { [self holdRev:NO source:3]; }
+- (void)cancelHeldRev { [self holdRev:NO source:11]; }
+- (void)steer:(BOOL)down right:(BOOL)right {
+    if(right)_steerRight=down;else _steerLeft=down;
+    _state.steering=float(_steerRight)-float(_steerLeft);[self publish];
+}
 - (void)holdBrake:(BOOL)down source:(unsigned)source {
     if(down && !_state.ready)return;
     const unsigned previous=_heldBrake;
@@ -318,15 +340,16 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     if(bool(previous)==bool(_heldBrake))return;
     _state.brakeHeld=_heldBrake!=0;_brakePending=true;[self flushHeldRev];[self publish];
 }
-- (void)windowDidResignKey:(NSNotification *)notification { (void)notification;[self cancelHeldRev];[self holdBrake:NO source:7]; }
-- (void)applicationDidResignActive:(NSNotification *)notification { (void)notification;[self cancelHeldRev];[self holdBrake:NO source:7]; }
-- (void)menuWillOpen:(NSMenu *)menu { (void)menu;[self cancelHeldRev];[self holdBrake:NO source:7]; }
+- (void)windowDidResignKey:(NSNotification *)notification { (void)notification;[self cancelHeldRev];[self holdBrake:NO source:15];[self steer:NO right:NO];[self steer:NO right:YES]; }
+- (void)applicationDidResignActive:(NSNotification *)notification { (void)notification;[self cancelHeldRev];[self holdBrake:NO source:15];[self steer:NO right:NO];[self steer:NO right:YES]; }
+- (void)menuWillOpen:(NSMenu *)menu { (void)menu;[self cancelHeldRev];[self holdBrake:NO source:15];[self steer:NO right:NO];[self steer:NO right:YES]; }
 - (void)activate:(Control)c {
     if(c==None)return;
     _state.focus=c;
     if(c==Effects) { _state.effects=!_state.effects;[self publish];return; }
     if(c==Uncapped) { _state.uncapped=!_state.uncapped;[self publish];return; }
     if(c==RoadView) {
+        [self steer:NO right:NO];[self steer:NO right:YES];
         _state.roadView=!_state.roadView;
         if(bounds(_state.focus,_state.roadView).w==0)_state.focus=None;
         [self publish];return;
@@ -341,6 +364,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     }
     if(c==Supra || c==Ls) { [self loadPreset:c==Ls ? 1 : 0];return; }
     if(!_state.ready)return;
+    if(c==RecoverCar) {_renderer.recoverCar();return;}
+    if(c==RestartRace) {_renderer.restartRace();return;}
     switch(c) {
     case Drive:
         if([self send:AudioEngineRunner::Action::Drive value:!_state.drive]) {
@@ -419,6 +444,13 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (void)key:(NSString *)key shift:(BOOL)shift {
     if(!key.length)return;
     unichar c=[key.lowercaseString characterAtIndex:0];
+    if(_state.roadView) {
+        if(c==NSLeftArrowFunctionKey || c==NSRightArrowFunctionKey) {[self steer:YES right:c==NSRightArrowFunctionKey];return;}
+        if(c==NSUpArrowFunctionKey || c=='w') {[self holdRev:YES source:8];return;}
+        if(c==NSDownArrowFunctionKey) {[self holdBrake:YES source:8];return;}
+        if(c=='c') {[self activate:RecoverCar];return;}
+        if(c==NSDeleteCharacter || c==NSBackspaceCharacter) {[self activate:RestartRace];return;}
+    }
     if(c=='\t' || c==NSBackTabCharacter) {
         const bool backwards=shift || c==NSBackTabCharacter;
         _state.focus=_state.focus==None ? (backwards ? Control(ControlCount-1) : Supra)
@@ -462,7 +494,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
             put(_state.output,_session->deviceName());put(_state.notice,"Ready. Press Space or Start engine.");
             if(_log)_log<<"loaded preset="<<_session->preset().id<<" device="<<_session->deviceName()
                 <<" driver="<<SDL_GetCurrentAudioDriver()<<std::endl;
-            if(_options.play || !_options.benchmark.empty())[self activate:Start];
+            if(_options.play || !_options.benchmark.empty() || !_options.gameTest.empty())[self activate:Start];
             if(_options.drive)[self activate:Drive];
         }
     }
@@ -480,9 +512,13 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
                 <<" mph="<<_state.engine.vehicleSpeed/.44704<<" shifting="<<_state.engine.shifting
                 <<" brake="<<_state.engine.brake<<" applied_throttle="<<_state.engine.appliedThrottle
                 <<" distance_m="<<_renderer.metrics().roadDistance<<" road_view="<<_state.roadView
+                <<" game_x="<<_renderer.metrics().game.x<<" game_z="<<_renderer.metrics().game.z
+                <<" laps="<<_renderer.metrics().game.laps<<" checkpoint="<<_renderer.metrics().game.nextCheckpoint
+                <<" steering="<<_state.steering<<" collisions="<<_renderer.metrics().game.collisions
                 <<" missing="<<audio.silenceFrames<<" frames="<<_renderer.metrics().frames<<std::endl;
         }
         if(!_options.uiTest.empty())[self runTests:elapsed];
+        else if(!_options.gameTest.empty())[self gameTest:elapsed];
         else if(!_options.benchmark.empty())[self benchmark:elapsed];
     }
     _state.active=_state.automated || (_window.visible && !_window.miniaturized && !NSApp.hidden);
@@ -559,8 +595,19 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     } else if(_testStage==13 && t>17.5) {
         [self check:s.throttle==0 && !_state.revHeld name:"focus_loss_releases_throttle"];
         [self check:_engineMenuItem.submenu.numberOfItems==SoundSession::presets().size()+1 name:"all_engines_in_menubar"];
-        [_view testKey:@"v"];[_view testKey:@"\t"];
+        [_view testKey:@"v"];[_view testKey:@"\t"];[_view testKey:@"\t"];[_view testKey:@"\t"];
         [self check:_state.roadView && _state.focus==Start name:"driving_hud_skips_hidden_controls"];
+        _state.focus=Throttle;const float throttleBefore=_state.throttle;
+        [_view testKey:@"\uF703"];
+        [self check:_state.steering==1 && _state.throttle==throttleBefore name:"game_right_arrow_steers_without_editing_slider"];
+        [_view testKey:@"\uF702"];[self check:_state.steering==0 name:"opposing_steering_keys_cancel"];
+        [_view testKeyUp:@"\uF703"];[self check:_state.steering==-1 name:"steering_key_up_preserves_other_direction"];
+        [self windowDidResignKey:[NSNotification notificationWithName:NSWindowDidResignKeyNotification object:_window]];
+        [self check:_state.steering==0 name:"focus_loss_releases_steering"];
+        [_view testKey:@"\uF700"];[self check:_state.revHeld && _state.throttle==1 name:"game_up_arrow_accelerates"];
+        [_view testKeyUp:@"\uF700"];[self check:!_state.revHeld && _state.throttle==0 name:"game_up_arrow_release"];
+        [_view testKey:@"\uF701"];[self check:_state.brakeHeld name:"game_down_arrow_brakes"];
+        [_view testKeyUp:@"\uF701"];[self check:!_state.brakeHeld name:"game_down_arrow_release"];
         [_view testKey:@"a"];++_testStage;
     } else if(_testStage==14 && t>18) {
         [self check:s.drive && s.gear==0 name:"automatic_drive_key"];
@@ -687,12 +734,87 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         <<",\n  \"write_errors\": "<<audio.writeErrors<<",\n  \"metal_errors\": "<<last.errors<<"\n}\n";
     report.close();
     std::cout<<"BENCHMARK result="<<(passed ? "PASS" : "FAIL")<<" render_fps="<<fps<<" cpu_ms="<<cpu<<" gpu_ms="<<gpu
-        <<" missing="<<audio.silenceFrames-_benchAudio.silenceFrames<<std::endl;
+        <<" game_x="<<_renderer.metrics().game.x<<" game_z="<<_renderer.metrics().game.z
+                <<" laps="<<_renderer.metrics().game.laps<<" checkpoint="<<_renderer.metrics().game.nextCheckpoint
+                <<" steering="<<_state.steering<<" collisions="<<_renderer.metrics().game.collisions
+                <<" missing="<<audio.silenceFrames-_benchAudio.silenceFrames<<std::endl;
     _exitCode=passed ? 0 : 1;[NSApp terminate:nil];
+}
+- (void)gameTest:(double)t {
+    auto metrics=_renderer.metrics();const auto engine=_session->snapshot();
+    if(_testStage==0 && t>3) {
+        [self check:_gameAudio.attach(_session->device()) name:"game_pcm_probe_attached"];
+        _benchMeasured=true;_benchAt=now();_benchMetrics=metrics;_benchAudio=_session->statistics();
+        _state.testPilot=true;_testStage=1;
+    }
+    if(_testStage>=1 && _testStage<=4) {
+        const double error=metrics.gameTargetSpeed-engine.vehicleSpeed;
+        const double rawBrake=std::clamp(-error*.3,0.0,.85);
+        const double brake=rawBrake>.04 ? rawBrake : 0;
+        const double throttle=brake>.03 ? 0 : std::clamp(.28+error*.18,.05,.9);
+        if(std::abs(throttle-_testThrottle)>.02) {_session->command(AudioEngineRunner::Action::Throttle,throttle);_testThrottle=throttle;_state.throttle=throttle;}
+        if(std::abs(brake-_testBrake)>.02 || (brake==0 && _testBrake!=0)) {_session->command(AudioEngineRunner::Action::Brake,brake);_testBrake=brake;}
+    }
+    if(_testStage==1 && t>12) {
+        const auto before=metrics;const auto blocks=engine.blocks;SDL_Delay(1200);const auto after=_renderer.metrics();
+        [self check:after.game.steps>before.game.steps+70 && drivingLength({after.game.x-before.game.x,after.game.z-before.game.z})>5 name:"game_continues_during_ui_stall"];
+        [self check:_session->snapshot().blocks>blocks+120 name:"audio_producer_continues_during_ui_stall"];
+        _testStage=2;
+    } else if(_testStage==2 && t>18) {
+        _gameBefore=metrics;_gamePhaseAt=now();_renderer.stallRendering(1200);_testStage=3;
+    } else if(_testStage==3 && now()-_gamePhaseAt>1.35) {
+        [self check:metrics.game.steps>_gameBefore.game.steps+90 && drivingLength({metrics.game.x-_gameBefore.game.x,metrics.game.z-_gameBefore.game.z})>5 name:"game_continues_during_render_stall"];
+        [self check:engine.blocks>_gameBefore.audioBlocksSeen+150 && _session->statistics().silenceFrames==_benchAudio.silenceFrames name:"sound_continues_during_render_stall"];
+        _renderer.capture((_options.gameTest+"-corner.png").c_str());_testStage=4;
+    } else if(_testStage==4 && metrics.game.laps>=1) {
+        [self check:metrics.game.lastLap>30 && metrics.game.nextCheckpoint==1 name:"complete_lap_with_ordered_checkpoints"];
+        [self check:metrics.game.collisions==0 name:"circuit_drivable_without_collisions"];
+        _gameBefore=metrics;_state.testPilot=false;_state.steering=1;_gamePhaseAt=now();
+        _session->command(AudioEngineRunner::Action::Brake,0);_session->command(AudioEngineRunner::Action::Throttle,.85);_state.throttle=.85;_testStage=5;
+    } else if(_testStage==5 && metrics.game.collisions>_gameBefore.game.collisions) {
+        [self check:metrics.game.offroad && metrics.game.roadDeceleration>2 name:"offroad_and_collision_apply_vehicle_load"];
+        _renderer.capture((_options.gameTest+"-collision.png").c_str());
+        _gameBefore=metrics;_state.steering=0;_state.throttle=0;
+        _session->command(AudioEngineRunner::Action::Throttle,0);_session->command(AudioEngineRunner::Action::Brake,1);
+        _renderer.recoverCar();_gamePhaseAt=now();_testStage=6;
+    } else if(_testStage==6 && metrics.game.recoveries>_gameBefore.game.recoveries) {
+        [self check:engine.vehicleSpeed<1 && std::abs(metrics.game.lateral)<1 name:"recovery_stops_and_returns_to_checkpoint"];
+        _renderer.capture((_options.gameTest+"-recovered.png").c_str());
+        _state.testPilot=true;_session->command(AudioEngineRunner::Action::Brake,0);_session->command(AudioEngineRunner::Action::Throttle,.5);
+        _state.throttle=.5;_gamePhaseAt=now();_testStage=7;
+    } else if(_testStage==7 && now()-_gamePhaseAt>4) {
+        [self check:engine.rpm>200 && engine.vehicleSpeed>1 name:"drive_after_recovery_without_engine_stall"];
+        _testStage=8;
+    }
+    const bool timedOut=t>180 || ((_testStage==5 || _testStage==6) && now()-_gamePhaseAt>15);
+    if(_testStage!=8 && !timedOut)return;
+    if(timedOut)[self check:false name:"game_test_finished_before_timeout"];
+    _gameAudio.detach();const auto audio=_session->statistics();
+    [self check:audio.silenceFrames==_benchAudio.silenceFrames && audio.writeErrors==0 name:"game_no_missing_audio_frames"];
+    [self check:_gameAudio.frames>44100 && _gameAudio.silentBlocks==0 && _gameAudio.invalidSamples==0 name:"game_continuous_valid_pcm"];
+    [self check:_gameAudio.clippedSamples==0 name:"game_no_clipped_pcm"];
+    [self check:metrics.errors==0 name:"game_no_metal_errors"];
+    const double seconds=now()-_benchAt;const uint64_t frames=metrics.frames-_benchMetrics.frames;
+    std::ofstream report(_options.gameTest+".json");
+    report<<std::fixed<<std::setprecision(4)<<"{\n  \"result\": \""<<(_passed ? "PASS" : "FAIL")<<"\",\n"
+        <<"  \"driver\": \""<<SDL_GetCurrentAudioDriver()<<"\",\n  \"seconds\": "<<seconds
+        <<",\n  \"render_fps_including_stall\": "<<frames/seconds
+        <<",\n  \"cpu_mean_ms\": "<<(metrics.cpuNs-_benchMetrics.cpuNs)/1e6/std::max(uint64_t(1),frames)
+        <<",\n  \"gpu_mean_ms\": "<<(metrics.gpuNs-_benchMetrics.gpuNs)/1e6/std::max(uint64_t(1),frames)
+        <<",\n  \"laps\": "<<metrics.game.laps<<",\n  \"best_lap_seconds\": "<<metrics.game.bestLap
+        <<",\n  \"collisions\": "<<metrics.game.collisions<<",\n  \"recoveries\": "<<metrics.game.recoveries
+        <<",\n  \"game_steps\": "<<metrics.game.steps<<",\n  \"missing_audio_frames\": "<<audio.silenceFrames-_benchAudio.silenceFrames
+        <<",\n  \"silent_pcm_blocks\": "<<_gameAudio.silentBlocks.load()<<",\n  \"clipped_pcm_samples\": "<<_gameAudio.clippedSamples.load()
+        <<",\n  \"max_audio_cpu_block_ms\": "<<engine.maxCpuBlockMs
+        <<",\n  \"metal_errors\": "<<metrics.errors<<"\n}\n";
+    report.close();
+    std::cout<<"GAME_RESULT="<<(_passed ? "PASS" : "FAIL")<<" laps="<<metrics.game.laps<<" missing="<<audio.silenceFrames-_benchAudio.silenceFrames<<std::endl;
+    _exitCode=_passed ? 0 : 1;[NSApp terminate:nil];
 }
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender { (void)sender;return YES; }
 - (void)applicationWillTerminate:(NSNotification *)notification {
     (void)notification;_closing=true;[_timer invalidate];
+    _gameAudio.detach();
     _renderer.stop();
     if(_loader.joinable())_loader.join();
     _pending.reset();_session.reset();
@@ -714,9 +836,10 @@ int main(int argc,char **argv) {
                         <<"--benchmark PREFIX [--seconds N] [--offscreen] [--uncapped]\n"
                         <<"--ui-test DIRECTORY  Hidden, programmatic input/audio/Metal checks\n"
                         <<"--self-test PREFIX [--preset ID] [--ui-stall-ms 0..1000]\n"
+                        <<"--game-test PREFIX              Circuit, collision, recovery and audio test\n"
                         <<"--drive-test PREFIX [--preset ID]  Acceleration/shifts/braking + PCM capture\n"
                         <<"--list-engines  List the IDs accepted by --preset\n"
-                        <<"Keys: Space start/stop, A auto drive/neutral, hold R throttle, hold S brake, V car/pistons, B blip, I idle, M mute, F effects, U frame mode, E library, 1/2 favorites\n";
+                        <<"Keys: arrows steer/gas/brake, C recover, Backspace new run, Space start/stop, A auto drive/neutral, hold R throttle, hold S brake, V car/pistons, B blip, I idle, M mute, F effects, U frame mode, E library, 1/2 favorites\n";
                     return 0;
                 }
                 if(arg=="--list-engines") {
@@ -726,6 +849,7 @@ int main(int argc,char **argv) {
                 if(arg=="--play"){options.play=true;continue;}
                 if(arg=="--drive"){options.drive=true;continue;}
                 if(arg=="--road"){options.roadView=true;continue;}
+                if(arg=="--game-test" && i+1<argc){options.gameTest=argv[++i];options.play=true;options.drive=true;options.roadView=true;continue;}
                 if(arg=="--uncapped"){options.uncapped=true;continue;}
                 if(arg=="--offscreen"){options.offscreen=true;continue;}
                 if(arg=="--no-effects"){options.effects=false;continue;}

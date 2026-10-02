@@ -26,6 +26,7 @@ add_executable(engine-sim-core-tests
     test/synthesizer_tests.cpp
     test/simulator_clock_test.cpp
     test/vehicle_visual_motion_test.cpp
+    test/driving_game_test.cpp
     test/text_renderer_test.cpp
     test/authored_mesh_library_test.cpp
     test/engine_catalog_test.cpp
@@ -42,7 +43,7 @@ if(ENGINE_SIM_BUILD_SCRIPTING)
         ATG_ENGINE_SIM_PIRANHA_ENABLED)
 endif()
 target_link_libraries(engine-sim-core-tests
-    PRIVATE engine-sim::core engine-sim-render-support csv-io gtest_main)
+    PRIVATE engine-sim::core engine-sim-driving engine-sim-render-support csv-io gtest_main)
 target_include_directories(engine-sim-core-tests
     PRIVATE
         "${ENGINE_SIM_SUBMODULE_DIR}/csv-io/include"

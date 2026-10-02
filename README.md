@@ -2,7 +2,7 @@
 
 A native Apple Silicon engine-sound playground: C++ simulation and audio,
 AppKit controls, and a Metal dashboard with moving pistons, cams, gauges,
-live audio plots, and a full-window chase-camera driving view.
+live audio plots, and a playable driving game with a chase camera.
 
 An independent community fork of [Ange Yaghi's Engine Simulator](https://github.com/ange-yaghi/engine-sim),
 built on [Carles Onielfa's Open Engine Simulator](https://github.com/carlesonielfa/open-engine-sim).
@@ -23,9 +23,13 @@ focuses on responsive sound and a native Mac interface.
   launch and up/downshifts, and briefly cuts throttle during a shift. A brake
   pedal lets you slow down and accelerate again.
 - Clear native Mac monospaced text, rasterized once into a Retina font atlas.
-- Full-window driving view with a detailed concept-car mesh, reflective paint,
-  forest scenery, and a large MPH/RPM/gear HUD. Metre-scaled road motion and wheel
-  rotation follow simulated travel; braking lights the lamps.
+- A closed forest circuit with steering, tire grip, off-road resistance and
+  barrier collisions. A three-lap time trial has ordered checkpoints, lap/best
+  timers, a finish state and a minimap. Recover to the last checkpoint or start
+  a new run without reloading the engine.
+- A detailed concept-car mesh, reflective paint, moving front wheels, body lean,
+  a spring chase camera and a large MPH/RPM/gear HUD. The engine simulation drives
+  actual forward travel; road and wheel motion use metres.
 - Audio production runs independently of the UI. The renderer consumes bounded
   snapshots; a slow or hidden window does not have to delay sound production.
 - Native Metal rendering, display-synchronized by default, with optional glow
@@ -82,8 +86,11 @@ as the app, avoiding a dependency on a newer Homebrew binary's minimum OS.
 | **E**, ENGINE LIBRARY, or macOS Engines menu | Choose an engine |
 | **Space** | Start/stop ignition |
 | **A** or **AUTO DRIVE** | Automatic Drive / neutral |
-| **Hold R** or hold the **HOLD** button | Full throttle while held; release returns to idle |
-| **Hold S** or hold **BRAKE S** | Apply the brakes (takes priority over throttle) |
+| **Hold R**, **W**, **Up**, or the **GAS** button | Accelerate while held |
+| **Hold S**, **Down**, or **BRAKE** | Apply the brakes (takes priority over throttle) |
+| **Left / Right** in the game | Steer; releasing returns the wheels toward centre |
+| **C** or **RECOVER** | Stop and return to the last checkpoint; adds a 3-second penalty |
+| **Backspace** or **NEW RUN** | Stop and restart the three-lap time trial |
 | **V** or the view button | Switch between the driving scene and engine dashboard |
 | Drag the throttle track | Set a persistent throttle position |
 | **I** | Return to idle |
@@ -112,10 +119,12 @@ free revving. Manual gear/clutch changes and the dyno leave automatic mode.
 This is automatic control of the existing simulated clutch/gearbox, not a
 separate torque-converter model.
 
-Press **V** to see the car, or launch with `--road`. The scene uses a generic
-concept-car body for every engine. It visualizes straight-line acceleration and
-braking; steering and manufacturer-specific car models are not implemented.
-Car and scenery credits are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Press **V** to enter the game, or launch with `--road`. Drive the forest circuit,
+pass all eight checkpoints in order, and complete three laps. Brake before tight
+corners: grip is limited, and leaving the asphalt increases resistance. Recovery
+adds a three-second penalty and returns you to the last passed checkpoint. The
+same generic concept-car body is used for every engine; handling is an approximate
+game model. Car and scenery credits are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 For the terminal interface without graphics, run `./run-sound.sh`. For the
 line-oriented audio host, run `./run-audio.sh --help`.
