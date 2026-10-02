@@ -3,6 +3,8 @@
 #include "../include/utilities.h"
 
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <cassert>
 #include <cmath>
 
@@ -27,6 +29,7 @@ Synthesizer::Synthesizer() {
     m_inputBufferSize = 0;
     m_inputWriteOffset = 0.0;
     m_inputSamplesRead = 0;
+    m_latency = 0;
 
     m_audioBufferSize = 0;
 
@@ -37,7 +40,6 @@ Synthesizer::Synthesizer() {
     m_lastInputSampleOffset = 0.0;
 
     m_run = true;
-    m_audioBufferedSamples = 0;
 #if !defined(__EMSCRIPTEN__)
     m_thread = nullptr;
 #endif
@@ -57,6 +59,7 @@ void Synthesizer::initialize(const Parameters &p) {
     m_inputBufferSize = p.inputBufferSize;
     m_inputWriteOffset = p.inputBufferSize;
     m_audioBufferSize = p.audioBufferSize;
+    m_outputLeadSamples = std::min(1024, p.audioBufferSize - 1);
     m_inputSampleRate = p.inputSampleRate;
     m_audioSampleRate = p.audioSampleRate;
     m_audioParameters = p.initialAudioParameters;
@@ -75,7 +78,6 @@ void Synthesizer::initialize(const Parameters &p) {
 
     m_inputWriteOffset = 0;
     m_processed = true;
-    m_audioBufferedSamples = 0;
 
     m_audioBuffer.initialize(p.audioBufferSize);
     m_inputChannels = new InputChannel[p.inputChannelCount];
@@ -108,9 +110,6 @@ void Synthesizer::initialize(const Parameters &p) {
     m_levelingFilter.p_minLevel = m_audioParameters.levelerMinGain;
     m_antialiasing.setCutoffFrequency(m_audioSampleRate * 0.45f, m_audioSampleRate);
 
-    for (int i = 0; i < m_audioBufferSize; ++i) {
-        m_audioBuffer.write(0);
-    }
 }
 
 void Synthesizer::initializeImpulseResponse(
@@ -160,23 +159,24 @@ bool Synthesizer::pumpAudioRendering() {
     return false;
 #else
     std::unique_lock<std::mutex> inputLock(m_inputLock);
-    if (!m_run || m_inputChannelCount == 0 || m_processed
+    if (!m_run || m_inputChannelCount == 0
         || m_inputChannels[0].data.size() == 0) {
         return false;
     }
 
     constexpr int outputLeadSamples = 1024;
-    const int targetOutputSamples = std::min(outputLeadSamples, m_audioBufferSize - 1);
-    const int n = std::min(
-        std::max(0, targetOutputSamples - m_audioBufferedSamples.load()),
-        static_cast<int>(m_inputChannels[0].data.size()));
+    const int targetOutputSamples = m_outputLeadSamples;
+    const int n = std::min({outputLeadSamples,
+        std::max(0, targetOutputSamples - static_cast<int>(m_audioBuffer.size())),
+        static_cast<int>(m_inputChannels[0].data.size())});
     if (n <= 0) return false;
 
     for (int i = 0; i < m_inputChannelCount; ++i) {
         m_inputChannels[i].data.read(n, m_inputChannels[i].transferBuffer);
+        m_inputChannels[i].data.removeBeginning(n);
     }
-    m_inputSamplesRead = n;
-    m_processed = true;
+    m_inputSamplesRead = 0;
+    m_latency = static_cast<int>(m_inputChannels[0].data.size());
     inputLock.unlock();
 
     AudioParameters parameters;
@@ -190,21 +190,20 @@ bool Synthesizer::pumpAudioRendering() {
             static_cast<float>(parameters.airNoiseFrequencyCutoff), m_audioSampleRate);
         m_filters[i].jitterFilter.setJitterScale(parameters.inputSampleNoise);
     }
-    {
-        std::lock_guard<std::mutex> outputLock(m_lock0);
-        for (int i = 0; i < n; ++i) m_audioBuffer.write(renderAudio(i, parameters));
-        m_audioBufferedSamples = static_cast<int>(m_audioBuffer.size());
-    }
+    std::array<int16_t, outputLeadSamples> rendered;
+    for (int i = 0; i < n; ++i) rendered[i] = renderAudio(i, parameters);
+    for (int i = 0; i < n; ++i) m_audioBuffer.push(rendered[i]);
     return true;
 #endif
 }
 
+void Synthesizer::setOutputLeadSamples(int samples) {
+    m_outputLeadSamples = std::clamp(samples, 1, std::max(1, m_audioBufferSize - 1));
+}
+
 void Synthesizer::discardAudioOutput() {
 #if !defined(__EMSCRIPTEN__)
-    std::lock_guard<std::mutex> lock(m_lock0);
-    const int samples = static_cast<int>(m_audioBuffer.size());
-    if (samples > 0) m_audioBuffer.removeBeginning(samples);
-    m_audioBufferedSamples = 0;
+    m_audioBuffer.discard(m_audioBuffer.size());
 #endif
 }
 
@@ -212,6 +211,7 @@ void Synthesizer::destroy() {
     m_audioBuffer.destroy();
 
     for (int i = 0; i < m_inputChannelCount; ++i) {
+        delete[] m_inputChannels[i].transferBuffer;
         m_inputChannels[i].data.destroy();
         m_inputChannels[i].realtimeData.destroy();
         m_filters[i].convolution.destroy();
@@ -231,29 +231,11 @@ int Synthesizer::readAudioOutput(int samples, int16_t *buffer) {
     std::fill(buffer, buffer + samples, 0);
     return 0;
 #else
+    // Called directly by the audio device. No locks, waits, allocations, or
+    // filter work are allowed on this deadline-sensitive consumer.
     int samplesConsumed = 0;
-    {
-        std::lock_guard<std::mutex> lock(m_lock0);
-
-        const int newDataLength = m_audioBuffer.size();
-        if (newDataLength >= samples) {
-            m_audioBuffer.readAndRemove(samples, buffer);
-        }
-        else {
-            m_audioBuffer.readAndRemove(newDataLength, buffer);
-            memset(
-                buffer + newDataLength,
-                0,
-                sizeof(int16_t) * ((size_t)samples - newDataLength));
-        }
-
-        samplesConsumed = std::min(samples, newDataLength);
-        m_audioBufferedSamples = static_cast<int>(m_audioBuffer.size());
-    }
-
-    // The renderer waits while its small output reservoir is full. A consumer
-    // draining it is the event that makes additional rendering possible.
-    if (samplesConsumed > 0) m_cv0.notify_one();
+    while (samplesConsumed < samples && m_audioBuffer.pop(buffer[samplesConsumed])) ++samplesConsumed;
+    std::fill(buffer + samplesConsumed, buffer + samples, 0);
     return samplesConsumed;
 #endif
 }
@@ -339,28 +321,35 @@ void Synthesizer::audioRenderingThread() {
 void Synthesizer::renderAudio() {
 #if !defined(__EMSCRIPTEN__)
     std::unique_lock<std::mutex> inputLock(m_inputLock);
-    // A second, modest reservoir decouples the render worker from the device
-    // queue without adding a perceptible control-to-sound delay.
+    // Bound rendered PCM to 23 ms at 44.1 kHz. This gives the worker some
+    // scheduling tolerance while keeping changes to audio parameters timely.
     constexpr int outputLeadSamples = 1024;
-    const int targetOutputSamples = std::min(outputLeadSamples, m_audioBufferSize - 1);
+    const int targetOutputSamples = m_outputLeadSamples;
 
-    m_cv0.wait(inputLock, [this, outputLeadSamples] {
+    m_cv0.wait_for(inputLock, std::chrono::milliseconds(1), [this] {
         const bool inputAvailable =
             m_inputChannels[0].data.size() > 0
-            && m_audioBufferedSamples.load() < std::min(outputLeadSamples, m_audioBufferSize - 1);
-        return !m_run || (inputAvailable && !m_processed);
+            && m_audioBuffer.size() < static_cast<std::size_t>(m_outputLeadSamples);
+        return !m_run || inputAvailable;
     });
 
-    const int n = std::min(
-        std::max(0, targetOutputSamples - m_audioBufferedSamples.load()),
-        (int)m_inputChannels[0].data.size());
+    if (!m_run) return;
+
+    const int n = std::min({outputLeadSamples,
+        std::max(0, targetOutputSamples - static_cast<int>(m_audioBuffer.size())),
+        (int)m_inputChannels[0].data.size()});
+    if (n == 0) return;
 
     for (int i = 0; i < m_inputChannelCount; ++i) {
         m_inputChannels[i].data.read(n, m_inputChannels[i].transferBuffer);
+        m_inputChannels[i].data.removeBeginning(n);
     }
-    
-    m_inputSamplesRead = n;
-    m_processed = true;
+
+    // The worker owns consumption of native input. Waiting for another
+    // simulation frame before consuming the rest limited output to one
+    // 1024-sample chunk per frame, starving a 44.1 kHz playback device.
+    m_inputSamplesRead = 0;
+    m_latency = static_cast<int>(m_inputChannels[0].data.size());
 
     inputLock.unlock();
 
@@ -376,13 +365,11 @@ void Synthesizer::renderAudio() {
         m_filters[i].jitterFilter.setJitterScale(parameters.inputSampleNoise);
     }
 
-    {
-        std::lock_guard<std::mutex> outputLock(m_lock0);
-        for (int i = 0; i < n; ++i) {
-            m_audioBuffer.write(renderAudio(i, parameters));
-        }
-        m_audioBufferedSamples = static_cast<int>(m_audioBuffer.size());
-    }
+    // Publish finished PCM through the single-producer/single-consumer queue.
+    // The audio callback can always read while this worker is doing convolution.
+    std::array<int16_t, outputLeadSamples> rendered;
+    for (int i = 0; i < n; ++i) rendered[i] = renderAudio(i, parameters);
+    for (int i = 0; i < n; ++i) m_audioBuffer.push(rendered[i]);
 
     m_cv0.notify_one();
 #endif

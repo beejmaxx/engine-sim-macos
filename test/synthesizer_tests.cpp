@@ -131,6 +131,60 @@ TEST(SynthesizerTests, PumpedProducerMaintainsOutputWithoutWorkerThread) {
     EXPECT_EQ(synth.readAudioOutput(16, output), 16);
     synth.destroy();
 }
+
+TEST(SynthesizerTests, ThreadedWorkerDrainsAWholeInputBlock) {
+    Synthesizer synth;
+    Synthesizer::Parameters params;
+    params.audioSampleRate = 44100;
+    params.inputSampleRate = 44100;
+    params.audioBufferSize = 8192;
+    params.inputBufferSize = 8192;
+    params.inputChannelCount = 1;
+    params.initialAudioParameters.convolution = 0.0f;
+    synth.initialize(params);
+    synth.startAudioRenderingThread();
+
+    constexpr int blockSamples = 4410; // One 100 ms simulation frame.
+    const double sample[] = {1000.0};
+    for (int i = 0; i < blockSamples; ++i) synth.writeInput(sample);
+    synth.endInputBlock();
+
+    // Playback must drain the entire block without another producer frame.
+    // Previously the worker stopped after 1024 samples (23 ms of audio).
+    int received = 0;
+    int16_t output[256] = {};
+    const auto deadline = std::chrono::steady_clock::now() + 3s;
+    while (received < blockSamples && std::chrono::steady_clock::now() < deadline) {
+        received += synth.readAudioOutput(256, output);
+        std::this_thread::sleep_for(1ms);
+    }
+    EXPECT_GE(received, blockSamples);
+    synth.endAudioRenderingThread();
+    synth.destroy();
+}
+
+TEST(SynthesizerTests, PumpedWorkerFillsPcmReserveAndDrainsWithoutNewPhysics) {
+    Synthesizer synth;
+    Synthesizer::Parameters params;
+    params.audioSampleRate = params.inputSampleRate = 44100;
+    params.audioBufferSize = params.inputBufferSize = 8192;
+    params.initialAudioParameters.convolution = 0;
+    synth.initialize(params);
+    synth.setOutputLeadSamples(2646); // 60 ms of finished PCM, not raw input.
+    const double sample[] = {1000};
+    for (int i = 0; i < 4410; ++i) synth.writeInput(sample);
+    synth.endInputBlock();
+    while (synth.pumpAudioRendering()) { }
+    EXPECT_NEAR(synth.getAudioOutputLatency(), 0.06, 1e-9);
+    EXPECT_NEAR(synth.getLatency(), 0.04, 1.0 / 44100);
+    int16_t output[2646]{};
+    int received = synth.readAudioOutput(2646, output);
+    while (synth.pumpAudioRendering()) { }
+    received += synth.readAudioOutput(2646, output);
+    EXPECT_EQ(received, 4411); // First interpolation boundary includes sample 0.
+    EXPECT_DOUBLE_EQ(synth.getLatency(), 0);
+    synth.destroy();
+}
 /*
 TEST(SynthesizerTests, SynthesizerConversionTest) {
     Synthesizer synth;

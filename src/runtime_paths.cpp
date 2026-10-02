@@ -18,6 +18,8 @@ RuntimePaths RuntimePaths::discover(
     packagedAssetDirectories.emplace_back(applicationDirectory / "../assets");
     packagedAssetDirectories.emplace_back(applicationDirectory / "assets");
     packagedAssetDirectories.emplace_back(applicationDirectory / "Contents/assets");
+    packagedAssetDirectories.emplace_back(applicationDirectory / "../Resources/assets");
+    packagedAssetDirectories.emplace_back(applicationDirectory / "Contents/Resources/assets");
     paths.assetDirectory = applicationDirectory / "../assets";
     for (const auto &candidate : packagedAssetDirectories) {
         if (std::filesystem::exists(candidate)) {

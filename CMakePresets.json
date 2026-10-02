@@ -35,7 +35,8 @@
         "rhs": "Darwin"
       },
       "cacheVariables": {
-        "CMAKE_OSX_ARCHITECTURES": "arm64"
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "14.0"
       }
     },
     {
@@ -131,10 +132,11 @@
     },
     {
       "name": "macos-arm64-package",
-      "displayName": "macOS arm64 packaged SDL app",
+      "displayName": "macOS arm64 packaged native and SDL apps",
       "inherits": "macos-arm64-desktop",
       "cacheVariables": {
-        "ENGINE_SIM_MACOS_APP_BUNDLE": "ON"
+        "ENGINE_SIM_MACOS_APP_BUNDLE": "ON",
+        "CMAKE_DISABLE_FIND_PACKAGE_SDL3": "ON"
       }
     },
     {

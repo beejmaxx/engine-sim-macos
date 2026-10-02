@@ -1,0 +1,14 @@
+// Expose the upstream MIT-licensed BMW script in the engine library.
+import "engine_sim.mr"
+import "M52B28.mr"
+
+units units()
+
+public node main {
+    set_engine(M52B28())
+    // Generic test vehicle; engine sound is the focus of this preset.
+    set_vehicle(vehicle(mass: 1400 * units.kg, rolling_resistance: 200))
+    set_transmission(transmission(max_clutch_torque: 350 * units.lb_ft)
+        .add_gear(4.2).add_gear(2.49).add_gear(1.66)
+        .add_gear(1.24).add_gear(1.0))
+}

@@ -28,7 +28,12 @@ float LevelingFilter::f(float sample) {
     if (attenuation < p_minLevel) attenuation = p_minLevel;
     else if (attenuation > p_maxLevel) attenuation = p_maxLevel;
 
-    m_attenuation = 0.9 * m_attenuation + 0.1 * attenuation;
+    // React immediately to a louder pulse; smoothing an increase in
+    // attenuation lets the first samples overshoot and hit the PCM clamp.
+    // Restore gain gradually after the pulse so the output does not jump up.
+    m_attenuation = attenuation < m_attenuation
+        ? attenuation
+        : 0.9 * m_attenuation + 0.1 * attenuation;
 
     return sample * m_attenuation;
 }

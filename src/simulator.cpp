@@ -75,6 +75,15 @@ void Simulator::startFrame(double dt) {
 
     const double timestep = getTimestep();
     m_steps = (int)std::round((dt * m_simulationSpeed) / timestep);
+#if !defined(__EMSCRIPTEN__)
+    if (!m_synthesizerLatencyCorrectionEnabled) {
+        // A 1 ms host tick at 2500 Hz is 2.5 steps. Rounding each tick to 3
+        // changes the audio clock and steadily fills/drops the input queue.
+        const double exactSteps = (dt * m_simulationSpeed) / timestep + m_stepRemainder;
+        m_steps = static_cast<int>(std::floor(exactSteps + 1e-9));
+        m_stepRemainder = exactSteps - m_steps;
+    }
+#endif
 
     if (m_synthesizerLatencyCorrectionEnabled) {
         const double targetLatency = getSynthesizerInputLatencyTarget();
@@ -170,6 +179,10 @@ void Simulator::endFrame() {
 
 void Simulator::destroy() {
     m_synthesizer.destroy();
+    delete m_system;
+    m_system = nullptr;
+    delete[] m_dynoTorqueSamples;
+    m_dynoTorqueSamples = nullptr;
 }
 
 void Simulator::startAudioRenderingThread() {

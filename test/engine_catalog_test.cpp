@@ -1,6 +1,7 @@
 #include "engine_catalog.h"
 
 #include <gtest/gtest.h>
+#include <algorithm>
 
 #if defined(ATG_ENGINE_SIM_PIRANHA_ENABLED)
 #include "compiler.h"
@@ -12,11 +13,14 @@ TEST(EngineCatalog, ContainsOnlyRunnableScriptsGroupedByDirectory) {
     const auto &catalog = engineCatalog();
     ASSERT_FALSE(catalog.empty());
     EXPECT_EQ(catalog.front().group, "Atg Video 1");
-    EXPECT_EQ(catalog.back().group, "Atg Video 2");
+    EXPECT_TRUE(std::is_sorted(catalog.begin(), catalog.end(), [](const auto &a, const auto &b) {
+        return a.relativeScriptPath < b.relativeScriptPath;
+    }));
     for (const EngineCatalogEntry &entry : catalog) {
         EXPECT_EQ(entry.relativeScriptPath.find("engines/"), 0u);
         EXPECT_FALSE(entry.name.empty());
         EXPECT_EQ(entry.relativeScriptPath.find("/radial.mr"), std::string::npos) << entry.relativeScriptPath;
+        EXPECT_EQ(entry.relativeScriptPath.find("/flat_six.mr"), std::string::npos) << entry.relativeScriptPath;
     }
 }
 

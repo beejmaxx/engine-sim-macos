@@ -70,8 +70,8 @@ class Synthesizer {
             int index);
         void startAudioRenderingThread();
         void endAudioRenderingThread();
-        // Browser builds do not use Wasm pthreads. Their host invokes this
-        // non-blocking producer from its browser frame instead.
+        // Non-blocking native producer for hosts that run synthesis and
+        // physics on the same worker instead of starting a synthesis thread.
         bool pumpAudioRendering();
         // Called only by a real-time audio host. `target` is preallocated by
         // the host and must hold `samples` mono float samples.
@@ -79,6 +79,9 @@ class Synthesizer {
         void clearRealtimeInput();
         void discardAudioOutput();
         void destroy();
+        // Set before starting a producer. An audio-only host can keep its
+        // reserve as finished PCM instead of waiting on a second worker.
+        void setOutputLeadSamples(int samples);
 
         int readAudioOutput(int samples, int16_t *buffer);
 
@@ -90,7 +93,7 @@ class Synthesizer {
 
         double getLatency() const;
         double getAudioOutputLatency() const {
-            return static_cast<double>(m_audioBufferedSamples.load()) / m_audioSampleRate;
+            return static_cast<double>(m_audioBuffer.size()) / m_audioSampleRate;
         }
 
         int inputDelta(int s1, int s0) const;
@@ -120,8 +123,9 @@ class Synthesizer {
         double m_inputWriteOffset;
         double m_lastInputSampleOffset;
 
-        RingBuffer<int16_t> m_audioBuffer;
+        SpscAudioRing<int16_t> m_audioBuffer;
         int m_audioBufferSize;
+        int m_outputLeadSamples = 1024;
 
         float m_inputSampleRate;
         float m_audioSampleRate;
@@ -134,7 +138,6 @@ class Synthesizer {
         std::thread *m_thread;
 #endif
         std::atomic<bool> m_run;
-        std::atomic<int> m_audioBufferedSamples;
         std::atomic<int> m_realtimeLatency{0};
         std::atomic<uint32_t> m_audioNoiseState{0x6d2b79f5u};
         bool m_processed;
@@ -144,7 +147,6 @@ class Synthesizer {
         // independent so convolution work never blocks the device reader.
 #if !defined(__EMSCRIPTEN__)
         mutable std::mutex m_inputLock;
-        mutable std::mutex m_lock0;
         mutable std::mutex m_parameterLock;
         mutable std::mutex m_renderLock;
         std::condition_variable m_cv0;

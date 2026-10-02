@@ -163,11 +163,26 @@ void EngineSimApplication::destroy() {
 
 void EngineSimApplication::process(float dt) {
     if (m_simulator == nullptr) return;
+#if defined(__EMSCRIPTEN__)
     m_simulator->startFrame(dt);
     while (m_simulator->simulateStep()) {
         if (m_oscCluster != nullptr) m_oscCluster->sample();
     }
     m_simulator->endFrame();
+#else
+    // Publish audio frequently while catching up after a slow screen frame.
+    // Keep the full elapsed simulation time.
+    double remaining = dt;
+    while (remaining > 0) {
+        const double blockDuration = std::min(remaining, 0.01);
+        m_simulator->startFrame(blockDuration);
+        while (m_simulator->simulateStep()) {
+            if (m_oscCluster != nullptr) m_oscCluster->sample();
+        }
+        m_simulator->endFrame();
+        remaining -= blockDuration;
+    }
+#endif
 }
 
 void EngineSimApplication::render() {
@@ -585,6 +600,12 @@ void EngineSimApplication::loadEngine(Engine *engine, Vehicle *vehicle, Transmis
         }
     }
     m_simulator->startAudioRenderingThread();
+#if !defined(__EMSCRIPTEN__)
+    // Keep one short reserve of already-simulated audio across render stalls.
+    // The callback consumes on demand, so no second SDL-side lead is needed.
+    m_simulator->setMaximumSynthesizerInputLatency(0.06);
+    process(0.06f);
+#endif
     if (m_audioOutput != nullptr) m_audioOutput->start(m_simulator);
     createObjects(engine);
     refreshUserInterface();

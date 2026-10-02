@@ -160,7 +160,9 @@ public node ls_v8 {
         hf_gain: 0.01,
         noise: 1.0,
         jitter: 0.6,
-        simulation_frequency: 10000
+        // Local M1 profile: trade simulation resolution for responsiveness.
+        // Hold N and scroll in the app to adjust this while running.
+        simulation_frequency: 2500
     )
 
     wires wires()

@@ -125,6 +125,7 @@ private:
     double m_filteredEngineSpeed;
 
     int m_steps;
+    double m_stepRemainder = 0.0;
 };
 
 #endif /* ATG_ENGINE_SIM_SIMULATOR_H */

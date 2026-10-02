@@ -1,0 +1,30 @@
+// Approximate sound model, MIT. Specification sources: docs/ENGINES.md.
+import "engine_sim.mr"
+import "flat_six.mr"
+
+units units()
+impulse_response_library ir_lib()
+
+public node main {
+    set_engine(sound_flat_six(
+        name: "Porsche 911 Carrera 3.2 (approx.)",
+        bore: 95 * units.mm,
+        stroke: 74.4 * units.mm,
+        compression_ratio: 10.3,
+        redline: 6500 * units.rpm,
+        intake_duration: 220 * units.deg,
+        exhaust_duration: 220 * units.deg,
+        valve_lift: 10 * units.mm,
+        flywheel_mass: 7 * units.kg,
+        exhaust_length: 850 * units.mm,
+        exhaust_impulse: ir_lib.default_0,
+        idle_plate: 0.9978,
+        flow_scale: 0.85,
+        simulation_frequency: 2500
+    ))
+    // The mass follows the cited 1984 car; the driveline is a generic approximation.
+    set_vehicle(vehicle(mass: 1210 * units.kg, rolling_resistance: 180))
+    set_transmission(transmission(max_clutch_torque: 350 * units.lb_ft)
+        .add_gear(3.18).add_gear(1.83).add_gear(1.26)
+        .add_gear(1.0).add_gear(0.79))
+}

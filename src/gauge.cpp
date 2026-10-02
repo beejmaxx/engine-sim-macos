@@ -4,6 +4,7 @@
 #include "../include/constants.h"
 
 #include <climits>
+#include <cmath>
 
 Gauge::Gauge() {
     m_thetaMin = (float)constants::pi;
@@ -50,17 +51,30 @@ void Gauge::destroy() {
 }
 
 void Gauge::update(float dt) {
+    if (!std::isfinite(dt) || dt <= 0.0f || m_max <= m_min) return;
+
     const float value = std::fmaxf(m_min, std::fmin(m_max, m_value));
     const float needle_s = std::pow((value - m_min) / std::abs(m_max - m_min), m_gamma);
-    const float F =
-        m_needleKs * (needle_s - m_needlePosition)
-        - m_needleKd * m_needleVelocity;
+#if defined(__EMSCRIPTEN__)
+    const int steps = 1;
+#else
+    // The native host can spend up to 250 ms in a frame. Integrating this
+    // stiff spring in one step makes even constant readings oscillate.
+    dt = std::fminf(dt, 0.25f);
+    const int steps = static_cast<int>(std::ceil(dt * 240.0f));
+#endif
+    const float stepDt = dt / steps;
+    for (int step = 0; step < steps; ++step) {
+        const float F =
+            m_needleKs * (needle_s - m_needlePosition)
+            - m_needleKd * m_needleVelocity;
 
-    m_needleVelocity = std::fminf(
-            m_needleMaxVelocity,
-            std::fmaxf(m_needleVelocity + F * dt, -m_needleMaxVelocity));
-    m_needlePosition += m_needleVelocity * dt;
-    m_needlePosition = std::fmax(0.0f, std::fmin(1.0f, m_needlePosition));
+        m_needleVelocity = std::fminf(
+                m_needleMaxVelocity,
+                std::fmaxf(m_needleVelocity + F * stepDt, -m_needleMaxVelocity));
+        m_needlePosition += m_needleVelocity * stepDt;
+        m_needlePosition = std::fmax(0.0f, std::fmin(1.0f, m_needlePosition));
+    }
 }
 
 void Gauge::render() {

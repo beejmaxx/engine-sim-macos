@@ -336,6 +336,7 @@ void PistonEngineSimulator::endFrame() {
     }
 
     const double frameTimestep = simulationSteps() * getTimestep();
+    if (frameTimestep <= 0) return;
     const int cylinderCount = m_engine->getCylinderCount();
     for (int i = 0; i < m_engine->getIntakeCount(); ++i) {
         m_engine->getIntake(i)->m_flowRate /= frameTimestep;
@@ -349,6 +350,7 @@ void PistonEngineSimulator::destroy() {
     if (m_cylinderWallConstraints != nullptr) delete[] m_cylinderWallConstraints;
     if (m_linkConstraints != nullptr) delete[] m_linkConstraints;
     if (m_crankshaftFrictionConstraints != nullptr) delete[] m_crankshaftFrictionConstraints;
+    if (m_crankshaftLinks != nullptr) delete[] m_crankshaftLinks;
     if (m_exhaustFlowStagingBuffer != nullptr) delete[] m_exhaustFlowStagingBuffer;
     if (m_system != nullptr) delete m_system;
     if (m_delayFilters != nullptr) delete[] m_delayFilters;
@@ -357,6 +359,7 @@ void PistonEngineSimulator::destroy() {
     m_cylinderWallConstraints = nullptr;
     m_linkConstraints = nullptr;
     m_crankshaftFrictionConstraints = nullptr;
+    m_crankshaftLinks = nullptr;
     m_exhaustFlowStagingBuffer = nullptr;
     m_system = nullptr;
 
@@ -364,6 +367,7 @@ void PistonEngineSimulator::destroy() {
     m_transmission = nullptr;
     m_engine = nullptr;
     m_delayFilters = nullptr;
+    Simulator::destroy();
 }
 
 void PistonEngineSimulator::writeToSynthesizer() {

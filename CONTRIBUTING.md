@@ -1,7 +1,8 @@
-# Contributing to Open Engine Simulator
+# Contributing to Engine Sim for macOS
 
-Thanks for helping improve this community-driven, cross-platform fork of
-[AngeTheGreat's Engine Simulator](https://github.com/ange-yaghi/engine-sim).
+This independent Mac fork builds on
+[AngeTheGreat's Engine Simulator](https://github.com/ange-yaghi/engine-sim) and
+[Carles Onielfa's Open Engine Simulator](https://github.com/carlesonielfa/open-engine-sim).
 Please keep upstream attribution and the MIT license intact.
 
 ## Before you start
@@ -21,15 +22,18 @@ Build and test the portable core:
 make PLATFORM=macos-arm64 portable-test
 ```
 
-Build the desktop host for your platform:
+Build and install the native Mac dashboard:
 
 ```sh
-make PLATFORM=macos-arm64 portable-build
+cmake --preset macos-arm64-package -DBUILD_TESTING=ON
+cmake --build --preset macos-arm64-package --parallel 4
+ctest --test-dir build/macos-arm64-package --output-on-failure
+cmake --install build/macos-arm64-package --prefix "$PWD/dist"
 ```
 
-Replace the platform value with `linux-x86_64` or `windows-x86_64` as needed.
-On Windows without GNU Make, use the equivalent `cmake --preset`,
-`cmake --build --preset`, and `ctest --preset` commands from the README.
+See [docs/MACOS.md](docs/MACOS.md) for programmatic audio and native input/render
+tests. The inherited portable core also has `linux-x86_64` and `windows-x86_64`
+CMake presets. The new AppKit/Metal dashboard is macOS-only.
 
 ## Contribution guidelines
 

@@ -1,0 +1,2 @@
+import "engines/atg-video-2/07_gm_ls.mr"
+main()

@@ -3,6 +3,7 @@ workspace/
 
 # Build directory
 build/
+dist/
 _CPack_Packages/
 open-engine-simulator-*.zip
 open-engine-simulator-*.tar.gz
@@ -17,3 +18,7 @@ compile_commands.json
 *.DS_Store
 error_log.log
 node_modules/
+
+# Machine-specific development notes and generated release archives
+/LOCAL-MACOS.txt
+/engine-sim-macos-*.zip

@@ -16,12 +16,15 @@ if(NOT TARGET GTest::gtest_main)
 endif()
 
 add_executable(engine-sim-core-tests
+    test/convolution_filter_test.cpp
     test/function_test.cpp
+    test/leveling_filter_test.cpp
     test/gas_system_tests.cpp
     test/geometry_generator_test.cpp
     test/runtime_paths_test.cpp
     test/shaders_test.cpp
     test/synthesizer_tests.cpp
+    test/simulator_clock_test.cpp
     test/text_renderer_test.cpp
     test/authored_mesh_library_test.cpp
     test/engine_catalog_test.cpp
@@ -29,7 +32,9 @@ add_executable(engine-sim-core-tests
     src/authored_mesh_library.cpp
     src/engine_catalog.cpp)
 if(ENGINE_SIM_BUILD_SCRIPTING)
-    target_sources(engine-sim-core-tests PRIVATE test/script_compile_test.cpp)
+    target_sources(engine-sim-core-tests PRIVATE
+        test/script_compile_test.cpp
+        test/engine_runtime_test.cpp)
     target_link_libraries(engine-sim-core-tests PRIVATE engine-sim-scripting)
     target_compile_definitions(engine-sim-core-tests PRIVATE
         ENGINE_SIM_TEST_ASSET_DIRECTORY="${CMAKE_CURRENT_SOURCE_DIR}/assets"
@@ -47,7 +52,24 @@ target_compile_definitions(engine-sim-core-tests PRIVATE
 include(GoogleTest)
 gtest_discover_tests(engine-sim-core-tests)
 
+if(NOT ENGINE_SIM_BUILD_WEB)
+    add_executable(engine-sim-gauge-tests test/gauge_test.cpp)
+    target_link_libraries(engine-sim-gauge-tests
+        PRIVATE engine-sim-visualization gtest_main)
+    gtest_discover_tests(engine-sim-gauge-tests)
+endif()
+
 if(ENGINE_SIM_BUILD_DESKTOP)
+    if(ENGINE_SIM_BUILD_SCRIPTING)
+        # Explicit opt-in executable: opens the real audio device but no window.
+        # It is intentionally not a CTest test, since it makes sound.
+        add_executable(engine-sim-audio-probe
+            test/audio_latency_probe.cpp src/sdl_audio_util.cpp src/sdl_audio_output.cpp)
+        target_link_libraries(engine-sim-audio-probe
+            PRIVATE SDL3::SDL3 engine-sim-scripting engine-sim::core)
+        target_compile_definitions(engine-sim-audio-probe PRIVATE
+            ENGINE_SIM_TEST_ASSET_DIRECTORY="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+    endif()
     # Runs against SDL's dummy device, so it needs no physical audio endpoint.
     add_executable(engine-sim-desktop-audio-tests
         test/sdl_audio_output_test.cpp
