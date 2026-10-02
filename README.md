@@ -2,14 +2,14 @@
 
 A native Apple Silicon engine-sound playground: C++ simulation and audio,
 AppKit controls, and a Metal dashboard with moving pistons, cams, gauges,
-live audio plots, and a lightweight chase-camera driving view.
+live audio plots, and a full-window chase-camera driving view.
 
 An independent community fork of [Ange Yaghi's Engine Simulator](https://github.com/ange-yaghi/engine-sim),
 built on [Carles Onielfa's Open Engine Simulator](https://github.com/carlesonielfa/open-engine-sim).
 The original simulation, sounds, and visual design are their work. This fork
 focuses on responsive sound and a native Mac interface.
 
-![The Metal dashboard driving with the Porsche GT3 engine](docs/images/driving-gt3.png)
+![The driving view with the Porsche GT3 engine and generic concept-car body](docs/images/driving-gt3.png)
 
 [See the piston cutaway view](docs/images/porsche-gt3.png).
 
@@ -23,8 +23,9 @@ focuses on responsive sound and a native Mac interface.
   launch and up/downshifts, and briefly cuts throttle during a shift. A brake
   pedal lets you slow down and accelerate again.
 - Clear native Mac monospaced text, rasterized once into a Retina font atlas.
-- Switch between pistons and a procedural sports coupe on an open road. Road
-  motion and wheel rotation follow simulated travel; braking lights the lamps.
+- Full-window driving view with a detailed concept-car mesh, reflective paint,
+  forest scenery, and a large MPH/RPM/gear HUD. Metre-scaled road motion and wheel
+  rotation follow simulated travel; braking lights the lamps.
 - Audio production runs independently of the UI. The renderer consumes bounded
   snapshots; a slow or hidden window does not have to delay sound production.
 - Native Metal rendering, display-synchronized by default, with optional glow
@@ -83,7 +84,7 @@ as the app, avoiding a dependency on a newer Homebrew binary's minimum OS.
 | **A** or **AUTO DRIVE** | Automatic Drive / neutral |
 | **Hold R** or hold the **HOLD** button | Full throttle while held; release returns to idle |
 | **Hold S** or hold **BRAKE S** | Apply the brakes (takes priority over throttle) |
-| **V** or the center-panel view button | Switch between chase camera and piston cutaway |
+| **V** or the view button | Switch between the driving scene and engine dashboard |
 | Drag the throttle track | Set a persistent throttle position |
 | **I** | Return to idle |
 | **B** | Short automatic rev |
@@ -112,8 +113,9 @@ This is automatic control of the existing simulated clutch/gearbox, not a
 separate torque-converter model.
 
 Press **V** to see the car, or launch with `--road`. The scene uses a generic
-stylized coupe for every engine. It visualizes straight-line acceleration and
+concept-car body for every engine. It visualizes straight-line acceleration and
 braking; steering and manufacturer-specific car models are not implemented.
+Car and scenery credits are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 For the terminal interface without graphics, run `./run-sound.sh`. For the
 line-oriented audio host, run `./run-audio.sh --help`.

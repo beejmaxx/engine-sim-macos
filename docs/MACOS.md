@@ -18,12 +18,12 @@ queue fills, the producer drops visual snapshots; it never waits for rendering.
 The renderer never dereferences the live engine's physics objects. Gauges and
 pistons continue updating during an intentionally blocked AppKit event loop.
 
-The rendering path uses a font atlas, reusable vertex buffers, and one draw call
-per frame. The display clock normally limits it to the connected display's
+The rendering path uses a font atlas and reusable vertex buffers. The dashboard
+uses one draw call; driving uses three (scenery, static indexed car mesh, HUD). The display clock normally limits it to the connected display's
 refresh rate. `U` removes that limit at the cost of more CPU/GPU work. Rendering
 pauses when hidden or minimized; sound continues.
 
-Text uses the native Mac monospaced font at 11.5, 13, 20, and 30 points, with
+Text uses the native Mac monospaced font at 11.5, 13, 20, 30, and 64 points, with
 Retina glyphs cached at initialization. It does not invoke AppKit text layout
 or rasterize fonts during rendering. The Metal shader's deployment target
 matches the app and bundled SDL's macOS 14 target.
@@ -47,18 +47,35 @@ reverse gear or separately simulated torque converter.
 
 ## Driving view
 
-`V` switches the center panel between the original cutaway and a chase camera.
-`--road` selects the driving view on launch. The procedural coupe and scenery
-live entirely on the render thread, in `src/sound_road_scene.h`. Vehicle
-distance is copied into the existing bounded physics snapshot; the wheel angle
-uses that distance and the script's tire radius. The road stops when the vehicle
-does, even while the engine idles. Brake lamps use the worker's actual brake state.
+`V` switches between the full-window driving scene and the engine dashboard.
+`--road` selects the driving view on launch. A large MPH readout, RPM arc and gear
+indicator show the simulated vehicle state; the same pedal controls work in both
+views. Hidden dashboard controls are excluded from hit testing and keyboard focus.
 
-The scene clips projected triangles to its panel and shares the dashboard's
-single Metal batch. A depth attachment resolves car surfaces and fog softens
-the distance. It adds no model files, physics thread, or audio synchronization.
-The same generic coupe is used for all presets; this is a straight-road sound
-visualization without steering or manufacturer-specific bodywork.
+Scenery in `src/sound_road_scene.h` is measured in metres: lanes are 3.5 m wide,
+paint repeats every 12 m, and roadside posts every 16 m. Trees occupy persistent
+world cells, so they keep their identity and scale as the camera passes them.
+Road textures, markings, scenery and wheel rotation share the vehicle's published
+travel distance. `VehicleVisualMotion` interpolates a short snapshot history on
+the display clock (about 25 ms behind physics), smoothing the 5 ms worker steps
+without inventing speed. It stops at the newest snapshot if physics stops.
+A portable test verifies that 60 mph advances 268.224 m in ten seconds with
+uniform frame-to-frame motion at 60 Hz. Another checks that stopped data cannot drift.
+
+`src/sound_car_metal.h` uploads the credited concept-car model once: 162,766
+vertices and 213,347 triangles, with authored normals and material factors.
+Metal transforms and lights it with reflective paint, dark glass and brake lamps;
+the CPU does not expand the car triangles each frame. The wheels roll according
+to the mesh's visible radius. Mipmapped pine-grove image planes provide foliage
+without rendering millions of tree triangles. A depth buffer resolves the scene.
+See [asset credits](../THIRD_PARTY_NOTICES.md) for licenses and import details.
+
+All of this stays on the render side of the bounded snapshot queue. It adds no
+physics thread or audio synchronization. PNG readbacks are encoded on a separate
+utility queue after GPU completion, so capturing evidence does not stall frames.
+The same generic concept car is used for every engine; this is a straight-road
+sound visualization without steering or manufacturer-specific bodywork. The
+lighting is approximate, and the trees are image planes rather than full 3D trees.
 
 ## Programmatic checks
 
@@ -142,11 +159,18 @@ response**. Its producer used about 30% of one CPU core; its slowest observed
 5 ms work block took 2.03 ms. The hidden native input/render suite passed across
 all seven tested engines, including full-throttle holds and focus loss.
 
-With the chase camera and automatic gearbox, a 20-second GT3/CoreAudio run at
+With the earlier inset chase camera and automatic gearbox, a 20-second GT3/CoreAudio run at
 2560 x 1600 averaged **59.60 completed FPS**, **0.45 ms CPU / 3.46 ms GPU** per
 frame, with **zero missing audio frames and zero Metal errors**. It rendered
 72 frames through a 1.2-second AppKit stall. The vehicle travelled 294.99 m
 before braking to a stop; subsequent frames kept that distance fixed.
+
+The full-window scene with the detailed car mesh and forest completed a newer
+20-second GT3/CoreAudio run at 2560 x 1600: **59.65 completed FPS**, **0.29 ms CPU /
+4.11 ms GPU** per frame, **zero missing audio frames and zero Metal errors**.
+It completed 72 frames during the 1.2-second AppKit stall and correctly stopped
+road travel after braking. A separate dummy-audio run averaged 60.00 FPS.
+These software measurements do not establish downstream device/acoustic latency.
 
 Separate 41-second automatic-driving audio checks passed for the Supra on the
 dummy device and GT3 on CoreAudio: five upshifts each, actual RPM drops and

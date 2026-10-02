@@ -57,7 +57,7 @@ if(APPLE AND ENGINE_SIM_BUILD_SCRIPTING)
         src/audio_engine_runner.cpp src/runtime_paths.cpp
         src/sdl_audio_util.cpp src/sdl_audio_output.cpp)
     target_link_libraries(engine-sim-sound PRIVATE
-        SDL3::SDL3 engine-sim-scripting engine-sim::core "-framework Cocoa" "-framework Metal" "-framework QuartzCore" "-framework CoreText" "-framework CoreVideo")
+        SDL3::SDL3 engine-sim-scripting engine-sim::core "-framework Cocoa" "-framework Metal" "-framework MetalKit" "-framework QuartzCore" "-framework CoreText" "-framework CoreVideo")
     add_dependencies(engine-sim-sound engine-sim-sound-shaders)
     target_compile_options(engine-sim-sound PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
     target_include_directories(engine-sim-sound PRIVATE "${ENGINE_SIM_GENERATED_INCLUDE_DIRECTORY}")

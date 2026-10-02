@@ -1,5 +1,6 @@
 #import <Cocoa/Cocoa.h>
 #import <Metal/Metal.h>
+#import <MetalKit/MetalKit.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <CoreVideo/CVDisplayLink.h>
 #import <QuartzCore/CATransaction.h>
@@ -7,6 +8,7 @@
 #include "sound_metal.h"
 #include "sound_session.h"
 #include "sound_road_scene.h"
+#include "vehicle_visual_motion.h"
 #include "authored_mesh_library.h"
 #include "units.h"
 #include <SDL3/SDL.h>
@@ -21,13 +23,14 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "sound_car_metal.h"
 
 using namespace sound_ui;
 
 namespace {
 constexpr int AtlasSize = 2048, MaxVertices = 1048576;
 constexpr float Pi = 3.14159265358979323846f;
-struct Vertex { simd_float2 p, uv; simd_float4 color; uint32_t kind;float depth=0;uint32_t padding[2]{}; };
+struct Vertex { simd_float2 p, uv; simd_float4 color; uint32_t kind;float depth=1;uint32_t padding[2]{}; };
 static_assert(sizeof(Vertex) == 48);
 struct Glyph { float u0=0,v0=0,u1=0,v1=0,w=0,h=0,advance=0,left=0,bottom=0; };
 struct Font { std::array<Glyph,128> glyphs; float ascent=0; };
@@ -40,14 +43,16 @@ constexpr unsigned Red=0xEE4445, Blue=0x77CEE0, Yellow=0xFDBD2E, Orange=0xE98434
 class DrawList {
 public:
     std::vector<Vertex> vertices;
-    std::array<Font,4> fonts;
+    std::array<Font,5> fonts;
+    float uiDepth=1;
+    size_t roadEnd=0;
     DrawList() { vertices.reserve(262144); }
     void triangle(simd_float2 a, simd_float2 b, simd_float2 c, simd_float4 tint) {
-        vertices.push_back({a,{},tint,0}); vertices.push_back({b,{},tint,0}); vertices.push_back({c,{},tint,0});
+        vertices.push_back({a,{},tint,0,uiDepth}); vertices.push_back({b,{},tint,0,uiDepth}); vertices.push_back({c,{},tint,0,uiDepth});
     }
     void quad(UiRect r, simd_float4 tint, uint32_t kind=0, simd_float2 uv0={}, simd_float2 uv1={}) {
-        Vertex a{{r.x,r.y},uv0,tint,kind}, b{{r.x+r.w,r.y},{uv1.x,uv0.y},tint,kind};
-        Vertex c{{r.x+r.w,r.y+r.h},uv1,tint,kind}, d{{r.x,r.y+r.h},{uv0.x,uv1.y},tint,kind};
+        Vertex a{{r.x,r.y},uv0,tint,kind,uiDepth}, b{{r.x+r.w,r.y},{uv1.x,uv0.y},tint,kind,uiDepth};
+        Vertex c{{r.x+r.w,r.y+r.h},uv1,tint,kind,uiDepth}, d{{r.x,r.y+r.h},{uv0.x,uv1.y},tint,kind,uiDepth};
         vertices.insert(vertices.end(), {a,b,c,a,c,d});
     }
     void rounded(UiRect r, float radius, simd_float4 tint) {
@@ -123,7 +128,12 @@ public:
         if(title)centered(title,r.x+r.w/2,r.y+5,0);
     }
     void button(Control c,const char *name,const State &s,bool selected=false,bool primary=false) {
-        const UiRect r=bounds(c);
+        const UiRect r=bounds(c,s.roadView);
+        if(s.roadView) {
+            rounded(r,5,color(s.pressed==c ? 0x303D48 : 0x131E28,s.pressed==c ? .92f : .65f));
+            if(selected || s.focus==c || s.hover==c)line(r.x+7,r.y+r.h-1,r.x+r.w-7,r.y+r.h-1,2,color(selected ? Blue : Ink));
+            centered(name,r.x+r.w/2,r.y+(r.h-13)/2,0,selected ? Blue : Ink);return;
+        }
         quad(r,color(s.pressed==c ? 0x373E42 : selected ? 0x262B2E : s.hover==c ? 0x202629 : Panel));
         panel(r);
         if(s.focus==c)line(r.x+2,r.y+r.h-2,r.x+r.w-2,r.y+r.h-2,2,color(Blue));
@@ -298,23 +308,63 @@ public:
         text("[ / ] CHANGE CYLINDER LAYER",411,371,0,Dim);
         right("LIVE PHYSICS",849,371,0,Dim);
     }
-    void road(const State &s,const EngineVisualLayout &layout,const EngineVisualSnapshot &v) {
-        const UiRect view{401,39,458,328};
-        const auto top=color(0x273F4D),bottom=color(0xB8BCA4);
-        for(int i=0;i<32;++i)quad({view.x,view.y+view.h*i/32,view.w,view.h/32+.1f},simd_mix(top,bottom,i/31.f));
-        circle(765,99,17,color(0xE1CAA0));
+    void road(const State &s,const EngineVisualLayout &layout,const EngineVisualSnapshot &v,float rpm,float fps) {
+        const UiRect view{0,0,Width,Height};
+        const auto top=color(0x21374E),bottom=color(0xE3B38C);
+        // Smooth vertex-color gradient, cached geometry and a single draw.
+        quad(view,top);
+        const auto begin=vertices.size()-6;
+        vertices[begin+2].color=bottom;vertices[begin+4].color=bottom;vertices[begin+5].color=bottom;
+        if(s.effects)quad({865,113,150,150},color(0xF1C58D,.35f),2,{-1,-1},{1,1});
+        circle(940,188,25,color(0xFFE1B1));
         roadScene.draw(view,v.vehicleDistance,layout.tireRadius,s.engine.brake>0,
-            [&](auto a,auto b,auto c,auto tint) {
-                for(auto p:{a,b,c})vertices.push_back({{p.x,p.y},{},tint,3,p.z});
+            [&](auto a,auto b,auto c,auto tint,unsigned kind) {
+                for(auto p:{a,b,c})vertices.push_back({{p.p.x,p.p.y},p.uv,tint,kind,p.p.z});
             });
-        panel({400,0,460,390});text("DRIVING VIEW",411,9);button(RoadView,"ENGINE [V]",s,true);
-        right("CHASE CAMERA",848,14,0,Dim);
-        char label[64];std::snprintf(label,sizeof(label),"%.2f KM",v.vehicleDistance/1000);text(label,411,371,0,Dim);
-        right(s.engine.brake>0 ? "BRAKING" : s.engine.drive ? "R ACCELERATE / S BRAKE" : "A ENGAGE DRIVE",849,371,0,s.engine.brake>0 ? Red : Dim);
+        roadEnd=vertices.size();uiDepth=0;
+        for(int i=0;i<24;++i) {
+            quad({0,float(i*5),Width,5},color(0x091321,.45f*(1-i/24.f)));
+            quad({0,Height-240+i*10.f,Width,10},color(0x091321,.65f*i/24));
+        }
+        text("ENGINE SIMULATOR  /  DRIVE",26,24,0,0xD1DDE4);
+        text(s.title.data(),24,44,2);text("CHASE CAMERA",26,74,0,0xD1DDE4);
+        button(Library,"ENGINES [E]",s);button(RoadView,"DASH [V]",s);
+        char label[96];std::snprintf(label,sizeof(label),"%.0f FPS  /  %s",fps,s.missing ? "AUDIO GAPS" : "AUDIO OK");right(label,1254,68,0,s.missing ? Red : 0xD1DDE4);
+        std::snprintf(label,sizeof(label),"%.2f KM",v.vehicleDistance/1000);right(label,1254,89,0,0xD1DDE4);
+        if(s.loading || !s.ready)centered(s.loading ? "LOADING ENGINE..." : "ENGINE UNAVAILABLE",640,180,2);
+        const float cx=1121,cy=667,radius=109,start=140*Pi/180,span=260*Pi/180;
+        const float limit=std::ceil(s.redline/1000)*1000,value=std::clamp(rpm/std::max(1000.f,limit),0.f,1.f);
+        arc(cx,cy,radius,start,start+span,5,color(Ink,.18f));
+        arc(cx,cy,radius,start,start+span*value,5,color(value>.85f ? Red : Ink));
+        arc(cx,cy,radius,start+span*.9f,start+span,5,color(Red,.7f));
+        const int marks=int(limit/1000);
+        for(int i=0;i<=marks;++i) {
+            const float a=start+span*i/marks;
+            line(cx+(radius-12)*std::cos(a),cy+(radius-12)*std::sin(a),cx+(radius-4)*std::cos(a),cy+(radius-4)*std::sin(a),1.5,color(Ink,.85f));
+            std::snprintf(label,sizeof(label),"%d",i);centered(label,cx+(radius-25)*std::cos(a),cy+(radius-25)*std::sin(a)-7,0);
+        }
+        std::snprintf(label,sizeof(label),"%.0f",std::max(0.f,v.vehicleSpeed/.44704f));centered(label,cx,623,4);
+        centered("MPH",cx,696,1,0xD1DDE4);
+        std::snprintf(label,sizeof(label),"%.0f RPM",std::max(0.f,rpm));centered(label,cx,761,1);
+        text("GEAR",936,684,0,0xD1DDE4);
+        if(v.gear<0)std::snprintf(label,sizeof(label),"N");else std::snprintf(label,sizeof(label),"%d",v.gear+1);
+        centered(label,956,702,3,s.engine.shifting ? Yellow : Ink);
+        centered(s.engine.drive ? "AUTO" : "MANUAL",956,747,0,0xD1DDE4);
+        text("THROTTLE",24,633,0,0xD1DDE4);
+        const auto throttle=bounds(Throttle,true);const float x=throttle.x+7,y=throttle.y+17,w=throttle.w-14;
+        line(x,y,x+w,y,3,color(Ink,.2f));line(x,y,x+w*std::sqrt(std::clamp(s.throttle,0.f,1.f)),y,3,color(Ink));
+        circle(x+w*std::sqrt(std::clamp(s.throttle,0.f,1.f)),y,4,color(Ink));
+        button(Drive,s.engine.drive ? "DRIVE [A]" : "NEUTRAL [A]",s,s.engine.drive);
+        text(s.engine.brake>0 ? "BRAKING" : s.engine.shifting ? "SHIFTING" : !s.engine.ignition ? "ENGINE OFF" : "HOLD R TO ACCELERATE",172,700,0,s.engine.brake>0 ? Red : Ink);
+        button(Start,s.ignitionRequested ? "STOP [SPACE]" : "START [SPACE]",s);
+        button(Rev,"GAS [R]",s,s.revHeld);button(Brake,"BRAKE [S]",s,s.brakeHeld);
+        button(Idle,"IDLE [I]",s);button(Mute,s.muted ? "UNMUTE" : "MUTE [M]",s,s.muted);
     }
     void draw(const State &s,const EngineVisualLayout &layout,const EngineVisualSnapshot &v,
             double dt,float fps,float cpuMs,float gpuMs,float displayedRpm) {
-        vertices.clear();quad({0,0,Width,Height},color(Panel));char b[192];
+        vertices.clear();uiDepth=1;
+        if(s.roadView) { road(s,layout,v,displayedRpm,fps);return; }
+        quad({0,0,Width,Height},color(Panel));char b[192];
         for(auto &value:firing)value*=std::exp(-dt/.075);
         panel({0,0,400,80});panel({0,0,62,80});
         // Preserve the community fork's existing artwork and attribution.
@@ -361,7 +411,7 @@ public:
         std::snprintf(b,sizeof(b),"%.0f RPM",v.dynoRpm);gauge({0,608,133.33f,120},"DYNO SPEED",v.dynoRpm,0,s.redline,b);sliderTrack(DynoSpeed,(s.dynoRpm-500)/std::max(1.f,s.redline-500),s);
         std::snprintf(b,sizeof(b),"%.0f LB-FT",v.torque/1.35581795f);gauge({133.33f,608,133.34f,120},"TORQUE",v.torque,0,1000,b);
         std::snprintf(b,sizeof(b),"%.0f HP",v.power/745.699872f);gauge({266.67f,608,133.33f,120},"HORSEPOWER",v.power/745.699872f,0,1000,b);
-        if(s.roadView)road(s,layout,v);else engine(s,layout,v);
+        engine(s,layout,v);
         plot({400,390,460,115},"TOTAL EXHAUST FLOW",0);
         pcm({400,505,153.33f,111.5f},s);plot({553.33f,505,153.34f,111.5f},"CYLINDER PRESSURE",1);
         plot({706.67f,505,153.33f,111.5f},"VALVE LIFT",3);
@@ -438,14 +488,19 @@ struct SoundMetalRenderer::Impl {
     id<MTLRenderPipelineState> pipeline=nil;
     id<MTLDepthStencilState> depthState=nil;
     id<MTLTexture> depthTexture=nil;
-    id<MTLTexture> atlas=nil, target=nil;
+    id<MTLTexture> atlas=nil, target=nil, foliage=nil;
     std::array<id<MTLBuffer>,3> buffers;
     dispatch_semaphore_t slots=dispatch_semaphore_create(3);
     dispatch_semaphore_t refresh=dispatch_semaphore_create(0);
+    dispatch_queue_t captureQueue=dispatch_queue_create("org.openenginesim.capture",
+        dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL,QOS_CLASS_UTILITY,0));
+    dispatch_group_t captureJobs=dispatch_group_create();
     std::atomic<bool> refreshPending{false};
     DrawList draw;
+    SoundCarMetal car;
     State state;
     EngineVisualSnapshot visual;
+    VehicleVisualMotion vehicleMotion;
     std::string assets;
     std::shared_ptr<SoundSession> session;
     uint64_t sessionGeneration=0,seenGeneration=0;
@@ -471,8 +526,8 @@ struct SoundMetalRenderer::Impl {
         CGContextSetGrayFillColor(context,1,1);
         CGContextSetShouldAntialias(context,true);
         int x=2,y=2,row=0;
-        const float sizes[]={11.5f,13,20,30};
-        for(int fontIndex=0;fontIndex<4;++fontIndex) {
+        const float sizes[]={11.5f,13,20,30,64};
+        for(int fontIndex=0;fontIndex<5;++fontIndex) {
             // Rasterize native, legible text once into the existing Retina
             // atlas. Frames still draw cached glyph quads in one Metal batch.
             NSFont *native=[NSFont monospacedSystemFontOfSize:sizes[fontIndex]*2
@@ -533,7 +588,7 @@ struct SoundMetalRenderer::Impl {
         if(!depthTexture) { ++errors;dispatch_semaphore_signal(slots);return; }
         { std::lock_guard<std::mutex> lock(stateMutex);capture=capturePath;capturePath[0]=0; }
             const uint64_t begin=SDL_GetTicksNS();
-            if(generation!=seenGeneration) { history.fill(0);waveWrite=0;rpm=0;visual={};draw.resetEngine();visualBlocksSeen=0;seenGeneration=generation; }
+            if(generation!=seenGeneration) { history.fill(0);waveWrite=0;rpm=0;visual={};vehicleMotion.reset();draw.resetEngine();visualBlocksSeen=0;seenGeneration=generation; }
             // Read published atomics and the visual queue here, independently
             // of AppKit timers, menus, dragging, or a stalled control thread.
             if(audio) {
@@ -542,7 +597,7 @@ struct SoundMetalRenderer::Impl {
                 while(audio->readEngineVisualization(next)) {
                     if(visual.block && std::hypot(next.cylinders[0].piston.x-visual.cylinders[0].piston.x,
                         next.cylinders[0].piston.y-visual.cylinders[0].piston.y)>.000001)++animatedFrames;
-                    visual=next;draw.accept(next);
+                    visual=next;draw.accept(next);vehicleMotion.accept(next.simulatedSeconds,next.vehicleDistance,next.vehicleSpeed);
                 }
                 visualBlocksSeen=visual.block;
                 const auto statistics=audio->statistics();
@@ -564,11 +619,13 @@ struct SoundMetalRenderer::Impl {
                 rateStart=begin;rateFrames=count;rateCpu=c;rateGpu=g;
             }
             const EngineVisualLayout empty;
-            draw.draw(current,audio ? audio->visualLayout() : empty,visual,dt,fps,cpu,gpu,rpm);
+            auto presented=visual;const auto movement=vehicleMotion.advance(dt);
+            presented.vehicleDistance=movement.distance;presented.vehicleSpeed=movement.speed;
+            draw.draw(current,audio ? audio->visualLayout() : empty,presented,dt,fps,cpu,gpu,rpm);
             if(current.roadView) {
-                ++roadFrames;if(visual.vehicleDistance>roadDistance.load()+.00001)++movingRoadFrames;
+                ++roadFrames;if(presented.vehicleDistance>roadDistance.load()+.00001)++movingRoadFrames;
             }
-            roadDistance=visual.vehicleDistance;
+            roadDistance=presented.vehicleDistance;
             peakVertices=std::max(peakVertices.load(),uint64_t(draw.vertices.size()));
             if(draw.vertices.size()>MaxVertices) { ++errors;dispatch_semaphore_signal(slots);return; }
             const size_t bytes=draw.vertices.size()*sizeof(Vertex);
@@ -593,7 +650,13 @@ struct SoundMetalRenderer::Impl {
             [encoder setDepthStencilState:depthState];
             [encoder setVertexBuffer:buffers[slot] offset:0 atIndex:0];
             [encoder setFragmentTexture:atlas atIndex:0];
-            [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:draw.vertices.size()];
+            [encoder setFragmentTexture:foliage atIndex:1];
+            if(current.roadView) {
+                [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:draw.roadEnd];
+                car.draw(encoder,draw.roadScene,presented.vehicleDistance,current.engine.brake>0);
+                [encoder setRenderPipelineState:pipeline];[encoder setVertexBuffer:buffers[slot] offset:0 atIndex:0];
+                [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:draw.roadEnd vertexCount:draw.vertices.size()-draw.roadEnd];
+            } else [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:draw.vertices.size()];
             [encoder endEncoding];
             id<MTLBuffer> readback=nil;
             const int width=int(texture.width),height=int(texture.height),stride=((width*4+255)/256)*256;
@@ -615,14 +678,22 @@ struct SoundMetalRenderer::Impl {
                 if(completed.status==MTLCommandBufferStatusError) ++owner->errors;
                 ++owner->frames; dispatch_semaphore_signal(owner->slots);
             }];
+            if(capture[0]) {
+                const std::string path(capture.data());
+                dispatch_group_enter(captureJobs);
+                [command addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+                    dispatch_async(owner->captureQueue, ^{
+                        @autoreleasepool {
+                        if(completed.status!=MTLCommandBufferStatusError && saveTexture(readback,width,height,stride,path.c_str())) ++owner->captured;
+                        else ++owner->errors;
+                        dispatch_group_leave(owner->captureJobs);
+                        }
+                    });
+                }];
+            }
             [command commit];
             if(drawable)[CATransaction flush];
             slot=(slot+1)%3;
-            if(capture[0]) {
-                [command waitUntilCompleted];
-                if(saveTexture(readback,width,height,stride,capture.data())) ++captured;
-                else ++errors;
-            }
         }
     }
 
@@ -692,11 +763,17 @@ bool SoundMetalRenderer::start(CAMetalLayer *layer,bool offscreen,const char *as
     layer.device=p.device;layer.pixelFormat=MTLPixelFormatBGRA8Unorm;layer.framebufferOnly=NO;
     layer.maximumDrawableCount=3;layer.displaySyncEnabled=YES;layer.presentsWithTransaction=NO;layer.opaque=YES;
     p.queue=[p.device newCommandQueue];
+    MTKTextureLoader *textures=[[MTKTextureLoader alloc] initWithDevice:p.device];
+    NSError *foliageError=nil;
+    p.foliage=[textures newTextureWithContentsOfURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:(p.assets+"/scenery/pine-grove.png").c_str()]]
+        options:@{MTKTextureLoaderOptionSRGB:@NO,MTKTextureLoaderOptionGenerateMipmaps:@YES,MTKTextureLoaderOptionOrigin:MTKTextureLoaderOriginTopLeft} error:&foliageError];
+    if(!p.foliage) {p.failure="Cannot load the forest texture";return false;}
     NSURL *url=[NSBundle.mainBundle URLForResource:@"sound_ui" withExtension:@"metallib" subdirectory:@"assets/shaders"];
     if(!url) url=[NSURL fileURLWithPath:@ENGINE_SIM_SOUND_METALLIB];
     NSError *error=nil;
     id<MTLLibrary> library=[p.device newLibraryWithURL:url error:&error];
     if(!library) { p.failure=error.localizedDescription.UTF8String;return false; }
+    if(!p.car.load(p.device,library,p.assets)) {p.failure="Cannot load the driving car mesh or Metal pipeline";return false;}
     MTLRenderPipelineDescriptor *desc=[MTLRenderPipelineDescriptor new];
     desc.vertexFunction=[library newFunctionWithName:@"sound_vertex"];
     desc.fragmentFunction=[library newFunctionWithName:@"sound_fragment"];
@@ -722,6 +799,7 @@ bool SoundMetalRenderer::start(CAMetalLayer *layer,bool offscreen,const char *as
 void SoundMetalRenderer::stop() {
     m_impl->running=false;dispatch_semaphore_signal(m_impl->refresh);
     if(m_impl->thread.joinable())m_impl->thread.join();
+    dispatch_group_wait(m_impl->captureJobs,DISPATCH_TIME_FOREVER);
     m_impl->session.reset();
 }
 void SoundMetalRenderer::update(const State &state) { std::lock_guard<std::mutex> lock(m_impl->stateMutex);m_impl->state=state; }

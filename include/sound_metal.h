@@ -14,7 +14,21 @@ struct UiRect {
     bool contains(float px, float py) const { return px >= x && py >= y && px < x+w && py < y+h; }
 };
 // Shared by the GPU draw list, hit testing and programmatic tests.
-inline UiRect bounds(Control control) {
+inline UiRect bounds(Control control,bool roadView=false) {
+    if(roadView) {
+        switch(control) {
+        case Library:return {992,24,136,32};
+        case RoadView:return {1140,24,116,32};
+        case Drive:return {24,691,132,32};
+        case Start:return {24,741,125,35};
+        case Rev:return {161,741,98,35};
+        case Brake:return {271,741,98,35};
+        case Idle:return {381,741,84,35};
+        case Mute:return {477,741,84,35};
+        case Throttle:return {24,651,340,25};
+        default:return {};
+        }
+    }
     switch (control) {
     case Supra: return {966, 741, 80, 27};
     case Ls: return {1054, 741, 65, 27};
@@ -46,8 +60,8 @@ inline UiRect bounds(Control control) {
     }
 }
 inline bool isSlider(Control c) { return (c >= Throttle && c <= Roughness) || c==HighFrequency || c==LowNoise || c==DynoSpeed || c==Clutch; }
-inline Control hit(float x, float y) {
-    for (int i = 0; i < ControlCount; ++i) if (bounds(Control(i)).contains(x,y)) return Control(i);
+inline Control hit(float x, float y,bool roadView=false) {
+    for (int i = 0; i < ControlCount; ++i) if (bounds(Control(i),roadView).contains(x,y)) return Control(i);
     return None;
 }
 struct State {

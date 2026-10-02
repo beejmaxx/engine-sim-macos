@@ -121,25 +121,25 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     return NSMakePoint(p.x*Width/self.bounds.size.width,p.y*Height/self.bounds.size.height);
 }
 - (void)mouseMoved:(NSEvent *)event {
-    NSPoint p=[self logicalPoint:event];[self.controller hover:hit(p.x,p.y) pressed:_pressed];
+    NSPoint p=[self logicalPoint:event];[self.controller hover:hit(p.x,p.y,[self.controller currentState].roadView) pressed:_pressed];
 }
 - (void)mouseExited:(NSEvent *)event { (void)event;[self.controller hover:None pressed:_pressed]; }
 - (void)mouseDown:(NSEvent *)event {
     [self.window makeFirstResponder:self];
-    NSPoint p=[self logicalPoint:event];_pressed=hit(p.x,p.y);
+    NSPoint p=[self logicalPoint:event];_pressed=hit(p.x,p.y,[self.controller currentState].roadView);
     _drag=isSlider(_pressed) ? _pressed : None;
     if(_pressed==Rev)[self.controller holdRev:YES source:2];
     if(_pressed==Brake)[self.controller holdBrake:YES source:2];
     [self.controller hover:_pressed pressed:_pressed];
-    if(_drag!=None) { UiRect r=bounds(_drag);[self.controller slider:_drag fraction:(p.x-r.x-7)/(r.w-14)]; }
+    if(_drag!=None) { UiRect r=bounds(_drag,[self.controller currentState].roadView);[self.controller slider:_drag fraction:(p.x-r.x-7)/(r.w-14)]; }
 }
 - (void)mouseDragged:(NSEvent *)event {
     if(_drag==None)return;
-    NSPoint p=[self logicalPoint:event];UiRect r=bounds(_drag);
+    NSPoint p=[self logicalPoint:event];UiRect r=bounds(_drag,[self.controller currentState].roadView);
     [self.controller slider:_drag fraction:(p.x-r.x-7)/(r.w-14)];
 }
 - (void)mouseUp:(NSEvent *)event {
-    NSPoint p=[self logicalPoint:event];Control released=hit(p.x,p.y);
+    NSPoint p=[self logicalPoint:event];Control released=hit(p.x,p.y,[self.controller currentState].roadView);
     if(_pressed==Rev)[self.controller holdRev:NO source:2];
     else if(_pressed==Brake)[self.controller holdBrake:NO source:2];
     else if(_drag==None && released==_pressed)[self.controller activate:released];
@@ -169,12 +169,12 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         windowNumber:self.window.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
 }
 - (void)testClick:(Control)control {
-    UiRect r=bounds(control);NSPoint point=NSMakePoint(r.x+r.w/2,r.y+r.h/2);
+    UiRect r=bounds(control,[self.controller currentState].roadView);NSPoint point=NSMakePoint(r.x+r.w/2,r.y+r.h/2);
     [self mouseDown:[self eventAt:point type:NSEventTypeLeftMouseDown]];
     [self mouseUp:[self eventAt:point type:NSEventTypeLeftMouseUp]];
 }
 - (void)testSlider:(Control)control fraction:(double)value {
-    UiRect r=bounds(control);NSPoint point=NSMakePoint(r.x+7+value*(r.w-14),r.y+16);
+    UiRect r=bounds(control,[self.controller currentState].roadView);NSPoint point=NSMakePoint(r.x+7+value*(r.w-14),r.y+16);
     [self mouseDown:[self eventAt:point type:NSEventTypeLeftMouseDown]];
     [self mouseUp:[self eventAt:point type:NSEventTypeLeftMouseUp]];
 }
@@ -190,7 +190,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     [self testHoldMouse:down control:Rev];
 }
 - (void)testHoldMouse:(BOOL)down control:(Control)control {
-    const auto r=bounds(control);
+    const auto r=bounds(control,[self.controller currentState].roadView);
     // Release outside the button: it must still release the throttle.
     const auto point=down ? NSMakePoint(r.x+r.w/2,r.y+r.h/2) : NSMakePoint(630,400);
     if(down)[self mouseDown:[self eventAt:point type:NSEventTypeLeftMouseDown]];
@@ -326,11 +326,15 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     _state.focus=c;
     if(c==Effects) { _state.effects=!_state.effects;[self publish];return; }
     if(c==Uncapped) { _state.uncapped=!_state.uncapped;[self publish];return; }
-    if(c==RoadView) { _state.roadView=!_state.roadView;[self publish];return; }
+    if(c==RoadView) {
+        _state.roadView=!_state.roadView;
+        if(bounds(_state.focus,_state.roadView).w==0)_state.focus=None;
+        [self publish];return;
+    }
     if(_state.loading)return;
     if(c==Library) {
         [self cancelHeldRev];
-        const UiRect r=bounds(Library);
+        const UiRect r=bounds(Library,_state.roadView);
         [[self engineMenu] popUpMenuPositioningItem:nil
             atLocation:NSMakePoint(r.x*_view.bounds.size.width/Width,(r.y+r.h)*_view.bounds.size.height/Height) inView:_view];
         return;
@@ -419,6 +423,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         const bool backwards=shift || c==NSBackTabCharacter;
         _state.focus=_state.focus==None ? (backwards ? Control(ControlCount-1) : Supra)
             : Control((int(_state.focus)+(backwards ? ControlCount-1 : 1))%ControlCount);
+        for(int i=0;i<ControlCount && bounds(_state.focus,_state.roadView).w==0;++i)
+            _state.focus=Control((int(_state.focus)+(backwards ? ControlCount-1 : 1))%ControlCount);
         [self publish];return;
     }
     if(c=='\r' && _state.focus!=None) { [self activate:_state.focus];return; }
@@ -553,6 +559,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     } else if(_testStage==13 && t>17.5) {
         [self check:s.throttle==0 && !_state.revHeld name:"focus_loss_releases_throttle"];
         [self check:_engineMenuItem.submenu.numberOfItems==SoundSession::presets().size()+1 name:"all_engines_in_menubar"];
+        [_view testKey:@"v"];[_view testKey:@"\t"];
+        [self check:_state.roadView && _state.focus==Start name:"driving_hud_skips_hidden_controls"];
         [_view testKey:@"a"];++_testStage;
     } else if(_testStage==14 && t>18) {
         [self check:s.drive && s.gear==0 name:"automatic_drive_key"];
@@ -578,11 +586,17 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         [_view testHoldMouse:YES control:Brake];++_testStage;
     } else if(_testStage==21 && t>20.9) {
         [self check:s.brake==1 name:"held_mouse_brake"];
+        const auto path=std::filesystem::path(_options.uiTest)/("road-engine-"+std::to_string(_testPreset)+".png");
+        _renderer.capture(path.c_str());++_expectedCaptures;
         [_view testHoldMouse:NO control:Brake];++_testStage;
     } else if(_testStage==22 && t>21.2) {
+        // PNG encoding is asynchronous; let slow disks finish without blocking
+        // the event loop, render thread, or audio worker.
+        if(_renderer.captures()<_expectedCaptures && t<25)return;
         [self check:s.brake==0 name:"mouse_up_outside_releases_brake"];
         [self check:_session->statistics().silenceFrames==0 && _session->statistics().writeErrors==0 name:"no_audio_gaps"];
         [self check:_renderer.captures()>=_expectedCaptures && _renderer.metrics().errors==0 name:"metal_capture"];
+        [_view testClick:RoadView];[self check:!_state.roadView name:"return_from_driving_hud"];
         if(++_testPreset<std::size(testEngines)) {
             [_window setContentSize:NSMakeSize(Width,Height)];
             const auto &presets=SoundSession::presets();
@@ -630,7 +644,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     }
     if(_state.roadView && _options.drive) {
         if(_testStage==5 && t>13) {
-            [self activate:Idle];[self holdBrake:YES source:1];_testStage=6;
+            // Benchmark commands are independent of actual window focus.
+            [self activate:Idle];_session->command(AudioEngineRunner::Action::Brake,1);_testStage=6;
         } else if(_testStage==6 && t>14) {
             _renderer.capture((_options.benchmark+"-brake.png").c_str());_testStage=7;
         } else if(_testStage==7 && t>21) {

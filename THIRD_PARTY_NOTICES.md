@@ -12,9 +12,16 @@ This is an independent community fork, maintained at
   [carlesonielfa/open-engine-sim](https://github.com/carlesonielfa/open-engine-sim).
   This fork builds on its portable CMake/core architecture, SDL host, engine
   catalog, asset pipeline, and cross-platform work. Git history is preserved.
-- **New Mac host and Porsche examples:** additions in this fork are provided
+- **New Mac host code and Porsche examples:** these additions are provided
   under the repository's MIT license. The Porsche examples derive from the
   upstream Subaru example; see [docs/ENGINES.md](docs/ENGINES.md).
+- **Car Concept**, © 2024 Darmstadt Graphics Group GmbH, Eric Chadwick, from
+  [Khronos glTF Sample Assets](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept),
+  is used under **CC BY 4.0**. The converted mesh retains that license. See
+  [source, modifications and license](assets/vehicles/concept/README.md).
+- **Pine Tree 01 preview render**, by Rico Cilliers and Rob Tuytel, from
+  [Poly Haven](https://polyhaven.com/a/pine_tree_01), is used under **CC0 1.0**.
+  See [scenery source and license](assets/scenery/README.md).
 - **SDL3**, by Sam Lantinga and contributors, uses the zlib license, reproduced
   in [third_party/licenses/SDL3.txt](third_party/licenses/SDL3.txt). Packaged Mac
   apps include an unmodified SDL3 dynamic library and this notice.

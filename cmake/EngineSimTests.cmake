@@ -25,6 +25,7 @@ add_executable(engine-sim-core-tests
     test/shaders_test.cpp
     test/synthesizer_tests.cpp
     test/simulator_clock_test.cpp
+    test/vehicle_visual_motion_test.cpp
     test/text_renderer_test.cpp
     test/authored_mesh_library_test.cpp
     test/engine_catalog_test.cpp
