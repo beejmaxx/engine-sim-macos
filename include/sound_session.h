@@ -61,5 +61,7 @@ private:
 // Uses the same session/command boundary as the native window; no AppKit needed.
 int verifySoundSession(const std::filesystem::path &assets, std::size_t preset,
     const std::string &prefix, int uiStallMs);
+int verifyDriveSession(const std::filesystem::path &assets, std::size_t preset,
+    const std::string &prefix);
 
 #endif

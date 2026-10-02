@@ -14,7 +14,7 @@ class Simulator;
 class AudioEngineRunner {
 public:
     enum class Action { Start, Stop, Throttle, Volume, Blip, ExhaustMix, Roughness,
-        HighFrequency, LowNoise, Dyno, DynoSpeed, Clutch, Gear };
+        HighFrequency, LowNoise, Dyno, DynoSpeed, Clutch, Gear, Drive, Brake };
     struct Command { Action action; double value = 0; };
     struct Snapshot {
         double rpm, simulatedSeconds, queuedMs, maxBlockMs, cpuSeconds, maxCpuBlockMs, maxWakeupOverrunMs;
@@ -22,6 +22,9 @@ public:
         int schedulingStatus;
         double throttle, volume, exhaustMix, roughness;
         bool ignition, cranking, blipping;
+        double vehicleSpeed, clutch, brake, appliedThrottle;
+        int gear;
+        bool drive, shifting;
     };
 
     ~AudioEngineRunner() { stop(); }
@@ -50,6 +53,9 @@ private:
     std::atomic<double> m_throttle{0}, m_volume{1};
     std::atomic<double> m_exhaustMix{1}, m_roughness{0};
     std::atomic<bool> m_ignition{false}, m_cranking{false}, m_blipping{false};
+    std::atomic<double> m_vehicleSpeed{0}, m_clutch{0}, m_brake{0}, m_appliedThrottle{0};
+    std::atomic<int> m_gear{-1};
+    std::atomic<bool> m_drive{false}, m_shifting{false};
 };
 
 #endif

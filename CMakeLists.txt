@@ -42,6 +42,7 @@ if(NOT MSVC)
 endif()
 
 set(ENGINE_SIM_CORE_SOURCES
+    src/automatic_transmission.cpp
     src/camshaft.cpp
     src/combustion_chamber.cpp
     src/connecting_rod.cpp

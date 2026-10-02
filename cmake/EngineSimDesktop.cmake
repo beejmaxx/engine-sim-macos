@@ -41,8 +41,12 @@ endif()
 
 if(APPLE AND ENGINE_SIM_BUILD_SCRIPTING)
     find_program(ENGINE_SIM_XCRUN xcrun REQUIRED)
+    set(ENGINE_SIM_SOUND_METAL_OPTIONS)
+    if(CMAKE_OSX_DEPLOYMENT_TARGET)
+        list(APPEND ENGINE_SIM_SOUND_METAL_OPTIONS "-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    endif()
     add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/sound_ui.metallib"
-        COMMAND "${ENGINE_SIM_XCRUN}" -sdk macosx metal -c "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/sound_ui.metal"
+        COMMAND "${ENGINE_SIM_XCRUN}" -sdk macosx metal ${ENGINE_SIM_SOUND_METAL_OPTIONS} -c "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/sound_ui.metal"
             -o "${CMAKE_CURRENT_BINARY_DIR}/sound_ui.air"
         COMMAND "${ENGINE_SIM_XCRUN}" -sdk macosx metallib "${CMAKE_CURRENT_BINARY_DIR}/sound_ui.air"
             -o "${CMAKE_CURRENT_BINARY_DIR}/sound_ui.metallib"

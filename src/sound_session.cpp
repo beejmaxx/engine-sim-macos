@@ -135,6 +135,7 @@ bool SoundSession::open(std::size_t presetIndex, const std::filesystem::path &as
         if(layout.bankCount>VisualMaxBanks || layout.cylinderCount>VisualMaxCylinders || layout.crankCount>VisualMaxCranks)
             throw std::runtime_error("Engine exceeds the visual snapshot capacity");
         layout.displacementLiters=impl.engine->getDisplacement()/units::L;
+        layout.tireRadius=impl.vehicle->getTireRadius();
         for(int i=0;i<layout.bankCount;++i) {
             const auto *bank=impl.engine->getCylinderBank(i);auto *head=impl.engine->getHead(i);
             auto &b=layout.banks[i];

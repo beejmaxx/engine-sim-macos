@@ -8,7 +8,7 @@
 namespace sound_ui {
 constexpr float Width = 1280, Height = 800;
 enum Control { None = -1, Supra, Ls, Start, Rev, Idle, Throttle, Volume, Exhaust,
-    Roughness, Mute, Reset, Effects, Uncapped, Library, HighFrequency, LowNoise, Dyno, DynoSpeed, Clutch, GearDown, GearUp, LayerBack, LayerNext, ControlCount };
+    Roughness, Mute, Reset, Effects, Uncapped, Library, HighFrequency, LowNoise, Dyno, DynoSpeed, Clutch, GearDown, GearUp, LayerBack, LayerNext, Drive, Brake, RoadView, ControlCount };
 struct UiRect {
     float x, y, w, h;
     bool contains(float px, float py) const { return px >= x && py >= y && px < x+w && py < y+h; }
@@ -35,8 +35,11 @@ inline UiRect bounds(Control control) {
     case Dyno: return {8, 579, 114, 25};
     case DynoSpeed: return {0, 608, 133.33f, 120};
     case Clutch: return {133.33f, 488, 133.34f, 120};
-    case GearDown: return {277, 568, 45, 26};
-    case GearUp: return {345, 568, 45, 26};
+    case GearDown: return {272, 568, 26, 26};
+    case GearUp: return {370, 568, 26, 26};
+    case Brake: return {302, 568, 64, 26};
+    case Drive: return {1127, 741, 143, 27};
+    case RoadView: return {581, 9, 113, 24};
     case LayerBack: return {786, 9, 26, 24};
     case LayerNext: return {821, 9, 26, 24};
     default: return {};
@@ -58,7 +61,7 @@ struct State {
     std::uint64_t missing = 0, writeErrors = 0;
     int preset = 0, layer = 0;
     float highFrequency=0, lowNoise=0, dynoRpm=1000, clutch=0;
-    bool dyno=false, revHeld=false;
+    bool dyno=false, revHeld=false, drive=false, brakeHeld=false, roadView=false;
     Control hover = None, focus = None, pressed = None;
     bool ready = false, loading = true, ignitionRequested = false, muted = false;
     bool effects = true, uncapped = false, silent = false, active = true, automated = false;
@@ -66,6 +69,8 @@ struct State {
 struct Metrics {
     std::uint64_t frames = 0, cpuNs = 0, gpuNs = 0, errors = 0;
     std::uint64_t audioBlocksSeen = 0, visualBlocksSeen = 0, animatedFrames = 0, peakVertices = 0;
+    std::uint64_t roadFrames = 0, movingRoadFrames = 0;
+    double roadDistance = 0;
     std::array<std::uint64_t, 256> cpuHistogram{}, gpuHistogram{};
 };
 }

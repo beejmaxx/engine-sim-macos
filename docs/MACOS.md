@@ -23,6 +23,43 @@ per frame. The display clock normally limits it to the connected display's
 refresh rate. `U` removes that limit at the cost of more CPU/GPU work. Rendering
 pauses when hidden or minimized; sound continues.
 
+Text uses the native Mac monospaced font at 11.5, 13, 20, and 30 points, with
+Retina glyphs cached at initialization. It does not invoke AppKit text layout
+or rasterize fonts during rendering. The Metal shader's deployment target
+matches the app and bundled SDL's macOS 14 target.
+
+## Automatic driving
+
+`AutomaticTransmission` is a platform-independent controller advanced on
+simulation time by the audio worker. It regulates clutch slip at launch,
+selects shift points from throttle and each engine's redline/ignition limiter,
+and uses a short torque cut plus clutch re-engagement during shifts. It reads
+the script's actual gear ratios and vehicle parameters; RPM and speed come from
+the physics simulation. Hysteresis prevents rapid gear hunting. Braking adds
+force to the vehicle's existing drag constraint, and the clutch opens near a
+stop to avoid stalling. The GUI only sends pedal/mode commands.
+
+`A` toggles automatic Drive; hold `R` for acceleration and `S` for brakes.
+Keyboard/mouse pedal holds are released on focus loss. The throttle slider
+remains a persistent pedal setting. Manual clutch/gear control and the dyno
+exit automatic mode. Drive works with the scripted forward gears; there is no
+reverse gear or separately simulated torque converter.
+
+## Driving view
+
+`V` switches the center panel between the original cutaway and a chase camera.
+`--road` selects the driving view on launch. The procedural coupe and scenery
+live entirely on the render thread, in `src/sound_road_scene.h`. Vehicle
+distance is copied into the existing bounded physics snapshot; the wheel angle
+uses that distance and the script's tire radius. The road stops when the vehicle
+does, even while the engine idles. Brake lamps use the worker's actual brake state.
+
+The scene clips projected triangles to its panel and shares the dashboard's
+single Metal batch. A depth attachment resolves car surfaces and fog softens
+the distance. It adds no model files, physics thread, or audio synchronization.
+The same generic coupe is used for all presets; this is a straight-road sound
+visualization without steering or manufacturer-specific bodywork.
+
 ## Programmatic checks
 
 The Python smoke harness uses SDL's dummy audio device by default. It is silent.
@@ -57,6 +94,32 @@ It counts GPU-completed frames, not independently measured display scanouts.
 The native input suite uses synthetic AppKit events and Metal readback, not
 computer-use automation. It covers seven engines, including both Porsches.
 
+To check the car, actual braking, and sound together:
+
+```sh
+./run-sound-gui.sh --preset porsche_911_gt3 --drive --road \
+  --benchmark "$PWD/build/audio-validation/gt3-road" --seconds 20
+```
+
+This accelerates, blocks AppKit while the car continues moving, then applies
+the brakes and verifies that road travel stops. It captures idle, acceleration,
+braking, and stopped PNGs directly from Metal, plus frame/audio counters in JSON.
+
+For an audio-only acceleration/shift/braking test, including PCM and driving
+telemetry capture:
+
+```sh
+build/macos-arm64-package/engine-sim-sound.app/Contents/MacOS/engine-sim-sound \
+  --preset supra --drive-test "$PWD/build/audio-validation/supra-drive"
+```
+
+Add `--silent` for SDL's dummy device. The 41-second test accelerates through
+multiple gears while checking actual RPM drops and throttle cuts, then brakes
+to a stop without stalling and returns to neutral. It also deliberately blocks
+the control thread, and checks for missing PCM, clipping, and unexpected silence.
+The offline core integration test exercises a complete drive/stop cycle for
+the Supra and GT3 without a real-time audio device.
+
 Run performance checks on their own. Debug builds, concurrent compilation,
 thermal throttling, and other active simulators can invalidate timing results.
 
@@ -78,6 +141,16 @@ frames, zero clipped samples**, and a maximum **40.44 ms command-to-mixer
 response**. Its producer used about 30% of one CPU core; its slowest observed
 5 ms work block took 2.03 ms. The hidden native input/render suite passed across
 all seven tested engines, including full-throttle holds and focus loss.
+
+With the chase camera and automatic gearbox, a 20-second GT3/CoreAudio run at
+2560 x 1600 averaged **59.60 completed FPS**, **0.45 ms CPU / 3.46 ms GPU** per
+frame, with **zero missing audio frames and zero Metal errors**. It rendered
+72 frames through a 1.2-second AppKit stall. The vehicle travelled 294.99 m
+before braking to a stop; subsequent frames kept that distance fixed.
+
+Separate 41-second automatic-driving audio checks passed for the Supra on the
+dummy device and GT3 on CoreAudio: five upshifts each, actual RPM drops and
+throttle cuts, no missing/clipped/unexpected silent PCM, and no stall at rest.
 
 See [ENGINES.md](ENGINES.md) for model limitations, including the radial-9 startup
 issue at the host's default simulation frequency. Hosted CI validates builds,

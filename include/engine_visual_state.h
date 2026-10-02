@@ -28,7 +28,7 @@ struct EngineVisualLayout {
     std::array<Cylinder,VisualMaxCylinders> cylinders{};
     std::array<Crank,VisualMaxCranks> cranks{};
     int bankCount=0,cylinderCount=0,crankCount=0,maxLayer=0;
-    float displacementLiters=0;
+    float displacementLiters=0,tireRadius=.32f;
 };
 struct EngineVisualSnapshot {
     struct Cylinder {
@@ -40,7 +40,7 @@ struct EngineVisualSnapshot {
     std::array<Cylinder,VisualMaxCylinders> cylinders{};
     std::array<VisualPose,VisualMaxCranks> cranks{};
     uint64_t block=0;
-    double simulatedSeconds=0;
+    double simulatedSeconds=0,vehicleDistance=0;
     float manifoldPressure=0,intakeFlow=0,afr=0,exhaustO2=0,exhaustFlow=0;
     float fuelLiters=0,vehicleSpeed=0,torque=0,power=0,throttleAngle=0;
     float highFrequency=0,lowNoise=0,levelerGain=0,physicsHz=0;

@@ -2,14 +2,16 @@
 
 A native Apple Silicon engine-sound playground: C++ simulation and audio,
 AppKit controls, and a Metal dashboard with moving pistons, cams, gauges,
-and live audio plots.
+live audio plots, and a lightweight chase-camera driving view.
 
 An independent community fork of [Ange Yaghi's Engine Simulator](https://github.com/ange-yaghi/engine-sim),
 built on [Carles Onielfa's Open Engine Simulator](https://github.com/carlesonielfa/open-engine-sim).
 The original simulation, sounds, and visual design are their work. This fork
 focuses on responsive sound and a native Mac interface.
 
-![The Metal dashboard running the Porsche GT3 example](docs/images/porsche-gt3.png)
+![The Metal dashboard driving with the Porsche GT3 engine](docs/images/driving-gt3.png)
+
+[See the piston cutaway view](docs/images/porsche-gt3.png).
 
 ## What works
 
@@ -17,6 +19,12 @@ focuses on responsive sound and a native Mac interface.
   GM LS, Ferrari V8/V12, and Lexus LFA V10.
 - Hold-to-rev keyboard/mouse input, a persistent throttle slider, live exhaust
   and noise controls, mute, ignition, and a layered engine cutaway.
+- Automatic Drive mode uses the real vehicle load and gearbox, handles clutch
+  launch and up/downshifts, and briefly cuts throttle during a shift. A brake
+  pedal lets you slow down and accelerate again.
+- Clear native Mac monospaced text, rasterized once into a Retina font atlas.
+- Switch between pistons and a procedural sports coupe on an open road. Road
+  motion and wheel rotation follow simulated travel; braking lights the lamps.
 - Audio production runs independently of the UI. The renderer consumes bounded
   snapshots; a slow or hidden window does not have to delay sound production.
 - Native Metal rendering, display-synchronized by default, with optional glow
@@ -49,7 +57,7 @@ cd engine-sim-macos
 cmake --preset macos-arm64-package
 cmake --build --preset macos-arm64-package --parallel 4
 cmake --install build/macos-arm64-package --prefix "$PWD/dist"
-./run-sound-gui.sh --preset porsche_911_gt3 --play
+./run-sound-gui.sh --preset porsche_911_gt3 --play --drive --road
 ```
 
 If Xcode 26 reports a missing Metal Toolchain, install that component with
@@ -72,7 +80,10 @@ as the app, avoiding a dependency on a newer Homebrew binary's minimum OS.
 | --- | --- |
 | **E**, ENGINE LIBRARY, or macOS Engines menu | Choose an engine |
 | **Space** | Start/stop ignition |
+| **A** or **AUTO DRIVE** | Automatic Drive / neutral |
 | **Hold R** or hold the **HOLD** button | Full throttle while held; release returns to idle |
+| **Hold S** or hold **BRAKE S** | Apply the brakes (takes priority over throttle) |
+| **V** or the center-panel view button | Switch between chase camera and piston cutaway |
 | Drag the throttle track | Set a persistent throttle position |
 | **I** | Return to idle |
 | **B** | Short automatic rev |
@@ -92,6 +103,17 @@ unless `--play` is passed. To list preset IDs:
 ./run-sound-gui.sh --preset porsche_911_carrera_32 --play
 ./run-sound-gui.sh --preset bmw_m52b28 --play
 ```
+
+To hear a run through the gears, press **Space**, **A**, then hold **R**. Drive
+handles the launch clutch and shifts automatically; **S** brakes. The gear panel
+shows `D1`, `D2`, etc., and highlights shifts. Press **A** again for neutral and
+free revving. Manual gear/clutch changes and the dyno leave automatic mode.
+This is automatic control of the existing simulated clutch/gearbox, not a
+separate torque-converter model.
+
+Press **V** to see the car, or launch with `--road`. The scene uses a generic
+stylized coupe for every engine. It visualizes straight-line acceleration and
+braking; steering and manufacturer-specific car models are not implemented.
 
 For the terminal interface without graphics, run `./run-sound.sh`. For the
 line-oriented audio host, run `./run-audio.sh --help`.

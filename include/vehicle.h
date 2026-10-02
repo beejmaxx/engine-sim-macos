@@ -31,6 +31,8 @@ class Vehicle {
         inline double getTravelledDistance() const { return m_travelledDistance; }
         inline void resetTravelledDistance() { m_travelledDistance = 0; }
         double linearForceToVirtualTorque(double force) const;
+        void setBrake(double pressure);
+        double getBrake() const { return m_brake; }
 
     protected:
         atg_scs::RigidBody *m_rotatingMass;
@@ -42,6 +44,7 @@ class Vehicle {
         double m_tireRadius;
         double m_travelledDistance;
         double m_rollingResistance;
+        double m_brake = 0;
 };
 
 #endif /* ATG_ENGINE_SIM_VEHICLE_H */

@@ -1,6 +1,7 @@
 #include "../include/vehicle.h"
 
 #include <cmath>
+#include <algorithm>
 
 Vehicle::Vehicle() {
     m_rotatingMass = nullptr;
@@ -48,4 +49,8 @@ double Vehicle::linearForceToVirtualTorque(double force) const {
     const double rotationToKineticRatio =
         std::sqrt(m_rotatingMass->I / m_mass);
     return rotationToKineticRatio * force;
+}
+
+void Vehicle::setBrake(double pressure) {
+    m_brake = std::isfinite(pressure) ? std::clamp(pressure, 0.0, 1.0) : 0;
 }

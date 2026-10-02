@@ -19,10 +19,10 @@ using namespace sound_ui;
 namespace {
 struct Options {
     std::filesystem::path assets;
-    std::string log, verify, benchmark, uiTest;
+    std::string log, verify, driveVerify, benchmark, uiTest;
     int preset=0, stall=1000;
     double seconds=12;
-    bool play=false, uncapped=false, offscreen=false, effects=true, silent=false;
+    bool play=false, drive=false, roadView=false, uncapped=false, offscreen=false, effects=true, silent=false;
 };
 double now() { return SDL_GetTicksNS()/1e9; }
 template<size_t N> void put(std::array<char,N> &target,const std::string &value) { std::snprintf(target.data(),N,"%s",value.c_str()); }
@@ -46,6 +46,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (void)testKey:(NSString *)key;
 - (void)testKeyUp:(NSString *)key;
 - (void)testHoldMouse:(BOOL)down;
+- (void)testHoldMouse:(BOOL)down control:(Control)control;
 @end
 
 @interface SoundApp : NSObject <NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate> {
@@ -54,8 +55,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     SoundMetalView *_view;
     NSTimer *_timer;
     NSMenuItem *_engineMenuItem;
-    unsigned _heldRev;
-    bool _revPending;
+    unsigned _heldRev, _heldBrake;
+    bool _revPending, _brakePending;
     id _activity;
     State _state;
     SoundMetalRenderer _renderer;
@@ -79,6 +80,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (void)hover:(Control)control pressed:(Control)pressed;
 - (void)key:(NSString *)key shift:(BOOL)shift;
 - (void)holdRev:(BOOL)down source:(unsigned)source;
+- (void)holdBrake:(BOOL)down source:(unsigned)source;
 - (void)cancelHeldRev;
 - (NSMenu *)engineMenu;
 - (State)currentState;
@@ -127,6 +129,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     NSPoint p=[self logicalPoint:event];_pressed=hit(p.x,p.y);
     _drag=isSlider(_pressed) ? _pressed : None;
     if(_pressed==Rev)[self.controller holdRev:YES source:2];
+    if(_pressed==Brake)[self.controller holdBrake:YES source:2];
     [self.controller hover:_pressed pressed:_pressed];
     if(_drag!=None) { UiRect r=bounds(_drag);[self.controller slider:_drag fraction:(p.x-r.x-7)/(r.w-14)]; }
 }
@@ -138,6 +141,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (void)mouseUp:(NSEvent *)event {
     NSPoint p=[self logicalPoint:event];Control released=hit(p.x,p.y);
     if(_pressed==Rev)[self.controller holdRev:NO source:2];
+    else if(_pressed==Brake)[self.controller holdBrake:NO source:2];
     else if(_drag==None && released==_pressed)[self.controller activate:released];
     _pressed=_drag=None;[self.controller hover:released pressed:None];
 }
@@ -152,6 +156,10 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (void)keyUp:(NSEvent *)event {
     if([event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"r"])
         [self.controller holdRev:NO source:1];
+    else if([event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"s"])
+        [self.controller holdBrake:NO source:1];
+    else if([event.charactersIgnoringModifiers isEqualToString:@"\r"])
+        [self.controller holdBrake:NO source:4];
     else [super keyUp:event];
 }
 - (NSEvent *)eventAt:(NSPoint)point type:(NSEventType)type {
@@ -179,7 +187,10 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         windowNumber:self.window.windowNumber context:nil characters:key charactersIgnoringModifiers:key isARepeat:NO keyCode:0]];
 }
 - (void)testHoldMouse:(BOOL)down {
-    const auto r=bounds(Rev);
+    [self testHoldMouse:down control:Rev];
+}
+- (void)testHoldMouse:(BOOL)down control:(Control)control {
+    const auto r=bounds(control);
     // Release outside the button: it must still release the throttle.
     const auto point=down ? NSMakePoint(r.x+r.w/2,r.y+r.h/2) : NSMakePoint(630,400);
     if(down)[self mouseDown:[self eventAt:point type:NSEventTypeLeftMouseDown]];
@@ -193,6 +204,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         _options=options;_loadReady=false;_passed=true;
         _benchAudio={};_benchMetrics={};
         _state.preset=options.preset;_state.uncapped=options.uncapped;_state.effects=options.effects;
+        _state.roadView=options.roadView;
         _state.engineCount=SoundSession::presets().size();
         _state.volume=SoundSession::DefaultVolume;
         _state.silent=std::string(SDL_GetCurrentAudioDriver())=="dummy";
@@ -245,6 +257,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (void)loadPreset:(int)preset {
     if(_closing || _loader.joinable())return;
     [self cancelHeldRev];_heldRev=0;_revPending=false;_state.revHeld=false;
+    [self holdBrake:NO source:7];_heldBrake=0;_brakePending=false;_state.brakeHeld=false;_state.drive=false;
     _state.loading=true;_state.ready=false;_state.ignitionRequested=false;_state.preset=preset;
     _engineMenuItem.submenu=[self engineMenu];
     put(_state.title,SoundSession::presets()[preset].title);
@@ -284,6 +297,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (void)flushHeldRev {
     if(_revPending && _session && _session->command(AudioEngineRunner::Action::Throttle,_heldRev ? 1 : 0))
         _revPending=false;
+    if(_brakePending && _session && _session->command(AudioEngineRunner::Action::Brake,_heldBrake ? 1 : 0))
+        _brakePending=false;
 }
 - (void)holdRev:(BOOL)down source:(unsigned)source {
     if(down && (!_state.ready || !_state.ignitionRequested))return;
@@ -296,14 +311,22 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     [self publish];
 }
 - (void)cancelHeldRev { [self holdRev:NO source:3]; }
-- (void)windowDidResignKey:(NSNotification *)notification { (void)notification;[self cancelHeldRev]; }
-- (void)applicationDidResignActive:(NSNotification *)notification { (void)notification;[self cancelHeldRev]; }
-- (void)menuWillOpen:(NSMenu *)menu { (void)menu;[self cancelHeldRev]; }
+- (void)holdBrake:(BOOL)down source:(unsigned)source {
+    if(down && !_state.ready)return;
+    const unsigned previous=_heldBrake;
+    _heldBrake=down ? (_heldBrake|source) : (_heldBrake&~source);
+    if(bool(previous)==bool(_heldBrake))return;
+    _state.brakeHeld=_heldBrake!=0;_brakePending=true;[self flushHeldRev];[self publish];
+}
+- (void)windowDidResignKey:(NSNotification *)notification { (void)notification;[self cancelHeldRev];[self holdBrake:NO source:7]; }
+- (void)applicationDidResignActive:(NSNotification *)notification { (void)notification;[self cancelHeldRev];[self holdBrake:NO source:7]; }
+- (void)menuWillOpen:(NSMenu *)menu { (void)menu;[self cancelHeldRev];[self holdBrake:NO source:7]; }
 - (void)activate:(Control)c {
     if(c==None)return;
     _state.focus=c;
     if(c==Effects) { _state.effects=!_state.effects;[self publish];return; }
     if(c==Uncapped) { _state.uncapped=!_state.uncapped;[self publish];return; }
+    if(c==RoadView) { _state.roadView=!_state.roadView;[self publish];return; }
     if(_state.loading)return;
     if(c==Library) {
         [self cancelHeldRev];
@@ -315,19 +338,29 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     if(c==Supra || c==Ls) { [self loadPreset:c==Ls ? 1 : 0];return; }
     if(!_state.ready)return;
     switch(c) {
+    case Drive:
+        if([self send:AudioEngineRunner::Action::Drive value:!_state.drive]) {
+            _state.drive=!_state.drive;_state.dyno=false;
+            _options.drive=_state.drive;
+            put(_state.notice,_state.drive ? "DRIVE: hold R to accelerate / S to brake / A for neutral" : "NEUTRAL: R throttle / B blip / A automatic drive");
+        }
+        break;
+    case Brake: [self holdBrake:YES source:4];break;
     case LayerBack: _state.layer=std::max(0,_state.layer-1);break;
     case LayerNext: _state.layer=std::min(_session->visualLayout().maxLayer,_state.layer+1);break;
     case Dyno:
-        if([self send:AudioEngineRunner::Action::Dyno value:!_state.dyno])_state.dyno=!_state.dyno;break;
-    case GearDown: [self send:AudioEngineRunner::Action::Gear value:-1];break;
-    case GearUp: [self send:AudioEngineRunner::Action::Gear value:1];break;
+        if([self send:AudioEngineRunner::Action::Dyno value:!_state.dyno]) {
+            _state.dyno=!_state.dyno;if(_state.dyno)_options.drive=false;
+        }break;
+    case GearDown: _options.drive=false;[self send:AudioEngineRunner::Action::Gear value:-1];break;
+    case GearUp: _options.drive=false;[self send:AudioEngineRunner::Action::Gear value:1];break;
     case Start: {
         [self cancelHeldRev];
         bool sent=_state.ignitionRequested ? _session->command(AudioEngineRunner::Action::Stop) : _session->startEngine();
         if(sent) {
             _state.ignitionRequested=!_state.ignitionRequested;_state.throttle=0;
             [self send:AudioEngineRunner::Action::Throttle value:0];
-            put(_state.notice,_state.ignitionRequested ? "Hold R: throttle   B: blip   I: idle   Space: stop" : "Engine off. Press Space or Start engine.");
+            put(_state.notice,_state.ignitionRequested ? "A drive / Hold R throttle / Hold S brake / Space stop" : "Engine off. Press Space or Start engine.");
             if(_state.ignitionRequested && !_activity)
                 _activity=[NSProcessInfo.processInfo beginActivityWithOptions:NSActivityUserInitiated reason:@"Live engine audio"];
             if(!_state.ignitionRequested && _activity) { [NSProcessInfo.processInfo endActivity:_activity];_activity=nil; }
@@ -367,7 +400,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     case LowNoise:
         if([self send:AudioEngineRunner::Action::LowNoise value:fraction])_state.lowNoise=fraction;break;
     case Clutch:
-        if([self send:AudioEngineRunner::Action::Clutch value:fraction])_state.clutch=fraction;break;
+        if([self send:AudioEngineRunner::Action::Clutch value:fraction]) {_state.clutch=fraction;_options.drive=false;}break;
     case DynoSpeed: {
         const double rpm=500+fraction*(_state.redline-500);
         if([self send:AudioEngineRunner::Action::DynoSpeed value:rpm])_state.dynoRpm=rpm;break;
@@ -400,6 +433,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     case 'm':[self activate:Mute];break;case 'f':[self activate:Effects];break;case 'u':[self activate:Uncapped];break;
     case '1':[self activate:Supra];break;case '2':[self activate:Ls];break;
     case 'e':[self activate:Library];break;
+    case 'a':[self activate:Drive];break;case 's':[self holdBrake:YES source:1];break;
+    case 'v':[self activate:RoadView];break;
     case '[':[self activate:LayerBack];break;case ']':[self activate:LayerNext];break;
     case 'd':[self activate:Dyno];break;
     default:break;
@@ -422,10 +457,12 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
             if(_log)_log<<"loaded preset="<<_session->preset().id<<" device="<<_session->deviceName()
                 <<" driver="<<SDL_GetCurrentAudioDriver()<<std::endl;
             if(_options.play || !_options.benchmark.empty())[self activate:Start];
+            if(_options.drive)[self activate:Drive];
         }
     }
     if(_state.ready) {
         _state.engine=_session->snapshot();auto audio=_session->statistics();
+        _state.drive=_state.engine.drive;
         _state.missing=audio.silenceFrames;_state.writeErrors=audio.writeErrors;
         const double elapsed=now()-_loadedAt;
         if(_log && elapsed-_lastLog>=1) {
@@ -433,6 +470,10 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
             _log<<std::fixed<<std::setprecision(3)<<"t="<<elapsed<<" rpm="<<_state.engine.rpm
                 <<" throttle="<<_state.engine.throttle<<" volume="<<_state.engine.volume
                 <<" ignition="<<_state.engine.ignition<<" cranking="<<_state.engine.cranking
+                <<" drive="<<_state.engine.drive<<" gear="<<_state.engine.gear+1
+                <<" mph="<<_state.engine.vehicleSpeed/.44704<<" shifting="<<_state.engine.shifting
+                <<" brake="<<_state.engine.brake<<" applied_throttle="<<_state.engine.appliedThrottle
+                <<" distance_m="<<_renderer.metrics().roadDistance<<" road_view="<<_state.roadView
                 <<" missing="<<audio.silenceFrames<<" frames="<<_renderer.metrics().frames<<std::endl;
         }
         if(!_options.uiTest.empty())[self runTests:elapsed];
@@ -470,6 +511,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         [self check:after.animatedFrames>before.animatedFrames+100 name:"real_physics_animation"];
         [_view testKey:@"]"];[self check:_state.layer==std::min(1,_session->visualLayout().maxLayer) name:"cutaway_layer_next"];
         [_view testKey:@"["];[self check:_state.layer==0 name:"cutaway_layer_back"];
+        [_view testKey:@"v"];[self check:_state.roadView name:"road_view_key"];
+        [_view testClick:RoadView];[self check:!_state.roadView name:"cutaway_view_button"];
         ++_testStage;
     } else if(_testStage==3 && t>6.5) {
         [self check:!s.blipping && s.throttle==0 && s.rpm>200 name:"rev_ends_during_ui_stall"];
@@ -510,6 +553,34 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     } else if(_testStage==13 && t>17.5) {
         [self check:s.throttle==0 && !_state.revHeld name:"focus_loss_releases_throttle"];
         [self check:_engineMenuItem.submenu.numberOfItems==SoundSession::presets().size()+1 name:"all_engines_in_menubar"];
+        [_view testKey:@"a"];++_testStage;
+    } else if(_testStage==14 && t>18) {
+        [self check:s.drive && s.gear==0 name:"automatic_drive_key"];
+        [_view testKey:@"r"];[_view testKey:@"s"];++_testStage;
+    } else if(_testStage==15 && t>18.5) {
+        [self check:s.brake==1 && s.appliedThrottle==0 name:"brake_overrides_accelerator"];
+        [_view testKeyUp:@"s"];++_testStage;
+    } else if(_testStage==16 && t>19) {
+        [self check:s.brake==0 && !_state.brakeHeld name:"brake_key_up"];
+        [_view testKey:@"s"];[self windowDidResignKey:[NSNotification notificationWithName:NSWindowDidResignKeyNotification object:_window]];
+        ++_testStage;
+    } else if(_testStage==17 && t>19.5) {
+        [self check:s.brake==0 && s.throttle==0 name:"focus_loss_releases_both_pedals"];
+        [_view testClick:Drive];++_testStage;
+    } else if(_testStage==18 && t>20) {
+        [self check:!s.drive && s.gear==-1 && s.clutch==0 name:"automatic_drive_button_neutral"];
+        _state.focus=Brake;[_view testKey:@"\r"];++_testStage;
+    } else if(_testStage==19 && t>20.3) {
+        [self check:s.brake==1 name:"focused_brake_return_key"];
+        [_view testKeyUp:@"\r"];++_testStage;
+    } else if(_testStage==20 && t>20.6) {
+        [self check:s.brake==0 name:"focused_brake_return_release"];
+        [_view testHoldMouse:YES control:Brake];++_testStage;
+    } else if(_testStage==21 && t>20.9) {
+        [self check:s.brake==1 name:"held_mouse_brake"];
+        [_view testHoldMouse:NO control:Brake];++_testStage;
+    } else if(_testStage==22 && t>21.2) {
+        [self check:s.brake==0 name:"mouse_up_outside_releases_brake"];
         [self check:_session->statistics().silenceFrames==0 && _session->statistics().writeErrors==0 name:"no_audio_gaps"];
         [self check:_renderer.captures()>=_expectedCaptures && _renderer.metrics().errors==0 name:"metal_capture"];
         if(++_testPreset<std::size(testEngines)) {
@@ -530,10 +601,13 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     }
 }
 - (void)benchmark:(double)t {
-    if(_testStage==0 && t>4) { _renderer.capture((_options.benchmark+".png").c_str());_testStage=1; }
+    if(_testStage==0 && t>4) { _renderer.capture((_options.benchmark+(_state.roadView ? "-idle.png" : ".png")).c_str());_testStage=1; }
     if(!_benchMeasured && t>3) { _benchMeasured=true;_benchAt=now();_benchMetrics=_renderer.metrics();_benchAudio=_session->statistics(); }
-    if(_testStage==1 && t>5) { _session->command(AudioEngineRunner::Action::Throttle,_session->preset().revThrottle);_state.throttle=_session->preset().revThrottle;_testStage=2; }
-    if(_testStage==2 && t>7) { [self activate:Idle];_testStage=3; }
+    if(_testStage==1 && t>5) {
+        const float pedal=_options.drive ? 1 : _session->preset().revThrottle;
+        _session->command(AudioEngineRunner::Action::Throttle,pedal);_state.throttle=pedal;_testStage=2;
+    }
+    if(_testStage==2 && t>7) { if(!_options.drive)[self activate:Idle];_testStage=3; }
     if(_testStage==3 && t>8) {
         const auto before=_renderer.metrics();
         SDL_Delay(1200);
@@ -543,9 +617,28 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         [self check:after.audioBlocksSeen>before.audioBlocksSeen+100 name:"live_numbers_during_ui_stall"];
         [self check:after.visualBlocksSeen>before.visualBlocksSeen+100 name:"pistons_continue_during_ui_stall"];
         [self check:after.animatedFrames>before.animatedFrames+100 name:"real_physics_animation"];
+        if(_state.roadView && _options.drive) {
+            [self check:after.movingRoadFrames>before.movingRoadFrames+30 && after.roadDistance>before.roadDistance+5 name:"car_continues_during_ui_stall"];
+        }
         [_view testKey:@"]"];[self check:_state.layer==std::min(1,_session->visualLayout().maxLayer) name:"cutaway_layer_next"];
         [_view testKey:@"["];[self check:_state.layer==0 name:"cutaway_layer_back"];
         _testStage=4;
+    }
+    if(_testStage==4 && t>12) {
+        if(_state.roadView)_renderer.capture((_options.benchmark+".png").c_str());
+        _testStage=5;
+    }
+    if(_state.roadView && _options.drive) {
+        if(_testStage==5 && t>13) {
+            [self activate:Idle];[self holdBrake:YES source:1];_testStage=6;
+        } else if(_testStage==6 && t>14) {
+            _renderer.capture((_options.benchmark+"-brake.png").c_str());_testStage=7;
+        } else if(_testStage==7 && t>21) {
+            const auto before=_renderer.metrics();SDL_Delay(600);const auto after=_renderer.metrics();
+            [self check:_session->snapshot().vehicleSpeed<.1 && std::abs(after.roadDistance-before.roadDistance)<.01
+                && after.frames>before.frames+15 name:"road_stops_with_vehicle"];
+            _renderer.capture((_options.benchmark+"-stopped.png").c_str());_testStage=8;
+        }
     }
     if(!_benchMeasured || now()-_benchAt<_options.seconds)return;
     const double seconds=now()-_benchAt;
@@ -553,7 +646,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     const auto count=last.frames-_benchMetrics.frames;
     const double fps=count/seconds,cpu=(last.cpuNs-_benchMetrics.cpuNs)/1e6/std::max(uint64_t(1),count);
     const double gpu=(last.gpuNs-_benchMetrics.gpuNs)/1e6/std::max(uint64_t(1),count);
-    const bool passed=_passed && count>0 && last.errors==0 && audio.silenceFrames==_benchAudio.silenceFrames && audio.writeErrors==0 && _session->snapshot().rpm>200;
+    const bool roadPassed=!(_state.roadView && _options.drive) || (last.roadDistance>20 && last.movingRoadFrames>120);
+    const bool passed=_passed && roadPassed && count>0 && last.errors==0 && audio.silenceFrames==_benchAudio.silenceFrames && audio.writeErrors==0 && _session->snapshot().rpm>200;
     std::ofstream report(_options.benchmark+".json");
     report<<std::fixed<<std::setprecision(4)<<"{\n  \"result\": \""<<(passed ? "PASS" : "FAIL")<<"\",\n"
         <<"  \"mode\": \""<<(_options.offscreen ? "offscreen" : "onscreen")<<"\",\n"
@@ -571,6 +665,9 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         <<",\n  \"ui_stall_rendered_frames\": "<<_benchStallFrames
         <<",\n  \"peak_vertices\": "<<last.peakVertices
         <<",\n  \"visual_blocks_seen\": "<<last.visualBlocksSeen
+        <<",\n  \"road_frames\": "<<last.roadFrames<<",\n  \"moving_road_frames\": "<<last.movingRoadFrames
+        <<",\n  \"distance_metres\": "<<last.roadDistance
+        <<",\n  \"vehicle_speed_mps\": "<<_session->snapshot().vehicleSpeed
         <<",\n  \"missing_frames\": "<<audio.silenceFrames-_benchAudio.silenceFrames
         <<",\n  \"write_errors\": "<<audio.writeErrors<<",\n  \"metal_errors\": "<<last.errors<<"\n}\n";
     report.close();
@@ -598,12 +695,13 @@ int main(int argc,char **argv) {
                 std::string arg=argv[i];
                 if(arg=="--help") {
                     std::cout<<"Engine Sound - native C++ / Metal sound studio\n"
-                        <<"--play --uncapped --no-effects --silent --log FILE\n"
+                        <<"--play --drive --road --uncapped --no-effects --silent --log FILE\n"
                         <<"--benchmark PREFIX [--seconds N] [--offscreen] [--uncapped]\n"
                         <<"--ui-test DIRECTORY  Hidden, programmatic input/audio/Metal checks\n"
                         <<"--self-test PREFIX [--preset ID] [--ui-stall-ms 0..1000]\n"
+                        <<"--drive-test PREFIX [--preset ID]  Acceleration/shifts/braking + PCM capture\n"
                         <<"--list-engines  List the IDs accepted by --preset\n"
-                        <<"Keys: Space start/stop, R rev, I idle, M mute, F effects, U frame mode, E library, 1/2 favorites\n";
+                        <<"Keys: Space start/stop, A auto drive/neutral, hold R throttle, hold S brake, V car/pistons, B blip, I idle, M mute, F effects, U frame mode, E library, 1/2 favorites\n";
                     return 0;
                 }
                 if(arg=="--list-engines") {
@@ -611,6 +709,8 @@ int main(int argc,char **argv) {
                     return 0;
                 }
                 if(arg=="--play"){options.play=true;continue;}
+                if(arg=="--drive"){options.drive=true;continue;}
+                if(arg=="--road"){options.roadView=true;continue;}
                 if(arg=="--uncapped"){options.uncapped=true;continue;}
                 if(arg=="--offscreen"){options.offscreen=true;continue;}
                 if(arg=="--no-effects"){options.effects=false;continue;}
@@ -621,6 +721,7 @@ int main(int argc,char **argv) {
                 else if(arg=="--benchmark")options.benchmark=value;
                 else if(arg=="--ui-test")options.uiTest=value;
                 else if(arg=="--self-test")options.verify=value;
+                else if(arg=="--drive-test")options.driveVerify=value;
                 else if(arg=="--seconds")options.seconds=std::stod(value);
                 else if(arg=="--ui-stall-ms")options.stall=std::stoi(value);
                 else if(arg=="--preset") {
@@ -637,8 +738,10 @@ int main(int argc,char **argv) {
         } catch(const std::exception &error) { std::cerr<<error.what()<<'\n';return 2; }
         if(!SDL_Init(SDL_INIT_AUDIO)){std::cerr<<SDL_GetError()<<'\n';return 2;}
         options.assets=RuntimePaths::discover(SDL_GetBasePath(),ENGINE_SIM_SOURCE_ASSET_DIRECTORY).assetDirectory;
-        if(!options.verify.empty()) {
-            const int result=verifySoundSession(options.assets,options.preset,options.verify,options.stall);SDL_Quit();return result;
+        if(!options.verify.empty() || !options.driveVerify.empty()) {
+            const int result=!options.driveVerify.empty() ? verifyDriveSession(options.assets,options.preset,options.driveVerify)
+                : verifySoundSession(options.assets,options.preset,options.verify,options.stall);
+            SDL_Quit();return result;
         }
         [NSApplication sharedApplication];
         __attribute__((objc_precise_lifetime)) SoundApp *controller=[[SoundApp alloc] initWithOptions:options];

@@ -6,6 +6,7 @@
 #import <CoreText/CoreText.h>
 #include "sound_metal.h"
 #include "sound_session.h"
+#include "sound_road_scene.h"
 #include "authored_mesh_library.h"
 #include "units.h"
 #include <SDL3/SDL.h>
@@ -26,14 +27,14 @@ using namespace sound_ui;
 namespace {
 constexpr int AtlasSize = 2048, MaxVertices = 1048576;
 constexpr float Pi = 3.14159265358979323846f;
-struct Vertex { simd_float2 p, uv; simd_float4 color; uint32_t kind, padding[3]{}; };
+struct Vertex { simd_float2 p, uv; simd_float4 color; uint32_t kind;float depth=0;uint32_t padding[2]{}; };
 static_assert(sizeof(Vertex) == 48);
 struct Glyph { float u0=0,v0=0,u1=0,v1=0,w=0,h=0,advance=0,left=0,bottom=0; };
 struct Font { std::array<Glyph,128> glyphs; float ascent=0; };
 simd_float4 color(unsigned rgb, float alpha = 1) {
     return {((rgb>>16)&255)/255.f, ((rgb>>8)&255)/255.f, (rgb&255)/255.f, alpha};
 }
-constexpr unsigned Ink=0xF3F3F3, Dim=0x929797, Panel=0x0E1011, Edge=0x777B7D;
+constexpr unsigned Ink=0xF3F3F3, Dim=0xB0B7BC, Panel=0x0E1011, Edge=0x777B7D;
 constexpr unsigned Red=0xEE4445, Blue=0x77CEE0, Yellow=0xFDBD2E, Orange=0xE98434, Pink=0xEF91BB;
 
 class DrawList {
@@ -94,6 +95,7 @@ public:
         }
     }
     AuthoredMeshLibrary meshes;
+    SoundRoadScene roadScene;
     struct Trace { float exhaust=0,pressure=0,volume=0,intake=0,outlet=0,rpm=0; };
     std::array<Trace,256> traces{};
     size_t traceWrite=0,traceCount=0;
@@ -214,6 +216,7 @@ public:
     void engine(const State &s,const EngineVisualLayout &layout,const EngineVisualSnapshot &v) {
         const UiRect box{400,0,460,390};panel(box);
         text("ENGINE CUTAWAY",411,9);char label[80];
+        button(RoadView,"ROAD [V]",s);
         std::snprintf(label,sizeof(label),"LAYER %d / %d",s.layer+1,layout.maxLayer+1);right(label,773,14);
         button(LayerBack,"<",s);button(LayerNext,">",s);
         if(!layout.cylinderCount || !v.block) { centered(s.loading ? "LOADING ENGINE..." : "ENGINE UNAVAILABLE",630,185,1);return; }
@@ -295,6 +298,20 @@ public:
         text("[ / ] CHANGE CYLINDER LAYER",411,371,0,Dim);
         right("LIVE PHYSICS",849,371,0,Dim);
     }
+    void road(const State &s,const EngineVisualLayout &layout,const EngineVisualSnapshot &v) {
+        const UiRect view{401,39,458,328};
+        const auto top=color(0x273F4D),bottom=color(0xB8BCA4);
+        for(int i=0;i<32;++i)quad({view.x,view.y+view.h*i/32,view.w,view.h/32+.1f},simd_mix(top,bottom,i/31.f));
+        circle(765,99,17,color(0xE1CAA0));
+        roadScene.draw(view,v.vehicleDistance,layout.tireRadius,s.engine.brake>0,
+            [&](auto a,auto b,auto c,auto tint) {
+                for(auto p:{a,b,c})vertices.push_back({{p.x,p.y},{},tint,3,p.z});
+            });
+        panel({400,0,460,390});text("DRIVING VIEW",411,9);button(RoadView,"ENGINE [V]",s,true);
+        right("CHASE CAMERA",848,14,0,Dim);
+        char label[64];std::snprintf(label,sizeof(label),"%.2f KM",v.vehicleDistance/1000);text(label,411,371,0,Dim);
+        right(s.engine.brake>0 ? "BRAKING" : s.engine.drive ? "R ACCELERATE / S BRAKE" : "A ENGAGE DRIVE",849,371,0,s.engine.brake>0 ? Red : Dim);
+    }
     void draw(const State &s,const EngineVisualLayout &layout,const EngineVisualSnapshot &v,
             double dt,float fps,float cpuMs,float gpuMs,float displayedRpm) {
         vertices.clear();quad({0,0,Width,Height},color(Panel));char b[192];
@@ -336,13 +353,15 @@ public:
         line(96,551,122,551,2,color(s.engine.cranking ? Red : 0x452020));
         button(Dyno,v.dyno ? "DYNO: ON" : "DYNO: OFF",s,v.dyno);
         std::snprintf(b,sizeof(b),"%.0f%%",v.clutch*100);gauge({133.33f,488,133.34f,120},"CLUTCH",v.clutch,0,1,b);sliderTrack(Clutch,v.clutch,s);
-        panel({266.67f,488,133.33f,120},"GEAR");
-        std::snprintf(b,sizeof(b),v.gear<0 ? "N" : "%d",v.gear+1);centered(b,333,521,3);
-        button(GearDown,"-",s);button(GearUp,"+",s);
+        panel({266.67f,488,133.33f,120},s.engine.drive ? "AUTOMATIC" : "GEAR");
+        if(v.gear<0)std::snprintf(b,sizeof(b),"N");
+        else std::snprintf(b,sizeof(b),s.engine.drive ? "D%d" : "%d",v.gear+1);
+        centered(b,333,513,3,s.engine.shifting ? Yellow : Ink);
+        button(GearDown,"-",s);button(GearUp,"+",s);button(Brake,"BRAKE S",s,s.brakeHeld);
         std::snprintf(b,sizeof(b),"%.0f RPM",v.dynoRpm);gauge({0,608,133.33f,120},"DYNO SPEED",v.dynoRpm,0,s.redline,b);sliderTrack(DynoSpeed,(s.dynoRpm-500)/std::max(1.f,s.redline-500),s);
         std::snprintf(b,sizeof(b),"%.0f LB-FT",v.torque/1.35581795f);gauge({133.33f,608,133.34f,120},"TORQUE",v.torque,0,1000,b);
         std::snprintf(b,sizeof(b),"%.0f HP",v.power/745.699872f);gauge({266.67f,608,133.33f,120},"HORSEPOWER",v.power/745.699872f,0,1000,b);
-        engine(s,layout,v);
+        if(s.roadView)road(s,layout,v);else engine(s,layout,v);
         plot({400,390,460,115},"TOTAL EXHAUST FLOW",0);
         pcm({400,505,153.33f,111.5f},s);plot({553.33f,505,153.34f,111.5f},"CYLINDER PRESSURE",1);
         plot({706.67f,505,153.33f,111.5f},"VALVE LIFT",3);
@@ -390,7 +409,7 @@ public:
         button(Uncapped,s.uncapped ? "UNCAPPED [U]" : "SYNC [U]",s,s.uncapped);
         std::snprintf(b,sizeof(b),"ENGINE LIBRARY [E] / %d",s.engineCount);button(Library,b,s);
         button(Supra,"SUPRA [1]",s,s.preset==0);button(Ls,"LS [2]",s,s.preset==1);
-        text("DRAG DIALS",1134,749,0,Dim);
+        button(Drive,s.engine.drive ? "DRIVE [A]" : "AUTO DRIVE [A]",s,s.engine.drive);
         text(s.silent ? "SILENT AUTOMATED TEST" : s.output.data(),10,780,0,s.silent ? Orange : Dim);
         text(s.notice.data(),360,780,0,Dim);
         right(s.writeErrors ? "OUTPUT ERROR" : s.missing ? "AUDIO GAPS" : "AUDIO OK",1270,780,0,s.missing || s.writeErrors ? Red : Blue);
@@ -417,6 +436,8 @@ struct SoundMetalRenderer::Impl {
     id<MTLDevice> device=nil;
     id<MTLCommandQueue> queue=nil;
     id<MTLRenderPipelineState> pipeline=nil;
+    id<MTLDepthStencilState> depthState=nil;
+    id<MTLTexture> depthTexture=nil;
     id<MTLTexture> atlas=nil, target=nil;
     std::array<id<MTLBuffer>,3> buffers;
     dispatch_semaphore_t slots=dispatch_semaphore_create(3);
@@ -438,6 +459,8 @@ struct SoundMetalRenderer::Impl {
     bool offscreen=false;
     std::atomic<uint64_t> frames{0},cpuNs{0},gpuNs{0},errors{0};
     std::atomic<uint64_t> audioBlocksSeen{0},visualBlocksSeen{0},animatedFrames{0},peakVertices{0};
+    std::atomic<uint64_t> roadFrames{0},movingRoadFrames{0};
+    std::atomic<double> roadDistance{0};
     std::array<std::atomic<uint64_t>,256> cpuHist{},gpuHist{};
     std::atomic<unsigned> captured{0};
 
@@ -448,13 +471,13 @@ struct SoundMetalRenderer::Impl {
         CGContextSetGrayFillColor(context,1,1);
         CGContextSetShouldAntialias(context,true);
         int x=2,y=2,row=0;
-        const float sizes[]={10,12,18,28};
-        CGDataProviderRef provider=CGDataProviderCreateWithFilename((assets+"/fonts/slkscr.ttf").c_str());
-        CGFontRef face=provider ? CGFontCreateWithDataProvider(provider) : nullptr;
-        if(provider)CGDataProviderRelease(provider);
-        if(!face) {CGContextRelease(context);return false;}
+        const float sizes[]={11.5f,13,20,30};
         for(int fontIndex=0;fontIndex<4;++fontIndex) {
-            CTFontRef font=CTFontCreateWithGraphicsFont(face,sizes[fontIndex]*2,nullptr,nullptr);
+            // Rasterize native, legible text once into the existing Retina
+            // atlas. Frames still draw cached glyph quads in one Metal batch.
+            NSFont *native=[NSFont monospacedSystemFontOfSize:sizes[fontIndex]*2
+                weight:fontIndex<2 ? NSFontWeightMedium : NSFontWeightSemibold];
+            CTFontRef font=(__bridge CTFontRef)native;
             auto &info=draw.fonts[fontIndex]; info.ascent=CTFontGetAscent(font)/2;
             for(UniChar c=32;c<127;++c) {
                 CGGlyph glyph=0; CTFontGetGlyphsForCharacters(font,&c,&glyph,1);
@@ -465,16 +488,14 @@ struct SoundMetalRenderer::Impl {
                 box=CGRectIntegral(CGRectInset(box,-2,-2));
                 int w=box.size.width,h=box.size.height;
                 if(x+w+2>=AtlasSize) { x=2; y+=row+2; row=0; }
-                if(y+h+2>=AtlasSize) { CFRelease(font);CGFontRelease(face);CGContextRelease(context);return false; }
+                if(y+h+2>=AtlasSize) { CGContextRelease(context);return false; }
                 CGPoint p{double(x)-box.origin.x,double(y)-box.origin.y};
                 CTFontDrawGlyphs(font,&glyph,&p,1,context);
                 g.u0=x/float(AtlasSize);g.v0=y/float(AtlasSize);g.u1=(x+w)/float(AtlasSize);g.v1=(y+h)/float(AtlasSize);
                 g.w=w/2.f;g.h=h/2.f;g.left=box.origin.x/2;g.bottom=box.origin.y/2;
                 x+=w+2;row=std::max(row,h);
             }
-            CFRelease(font);
         }
-        CGFontRelease(face);
         CGContextRelease(context);
         // Quartz's origin is at the bottom; Metal texture rows start at the top.
         // Store rows in the glyph coordinates used above and reverse each
@@ -503,6 +524,13 @@ struct SoundMetalRenderer::Impl {
         dispatch_semaphore_wait(slots,DISPATCH_TIME_FOREVER);
         id<MTLTexture> texture=offscreen ? target : drawable.texture;
         if(!texture) { dispatch_semaphore_signal(slots);return; }
+        if(depthTexture.width!=texture.width || depthTexture.height!=texture.height) {
+            auto descriptor=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
+                width:texture.width height:texture.height mipmapped:NO];
+            descriptor.usage=MTLTextureUsageRenderTarget;descriptor.storageMode=MTLStorageModePrivate;
+            depthTexture=[device newTextureWithDescriptor:descriptor];
+        }
+        if(!depthTexture) { ++errors;dispatch_semaphore_signal(slots);return; }
         { std::lock_guard<std::mutex> lock(stateMutex);capture=capturePath;capturePath[0]=0; }
             const uint64_t begin=SDL_GetTicksNS();
             if(generation!=seenGeneration) { history.fill(0);waveWrite=0;rpm=0;visual={};draw.resetEngine();visualBlocksSeen=0;seenGeneration=generation; }
@@ -537,6 +565,10 @@ struct SoundMetalRenderer::Impl {
             }
             const EngineVisualLayout empty;
             draw.draw(current,audio ? audio->visualLayout() : empty,visual,dt,fps,cpu,gpu,rpm);
+            if(current.roadView) {
+                ++roadFrames;if(visual.vehicleDistance>roadDistance.load()+.00001)++movingRoadFrames;
+            }
+            roadDistance=visual.vehicleDistance;
             peakVertices=std::max(peakVertices.load(),uint64_t(draw.vertices.size()));
             if(draw.vertices.size()>MaxVertices) { ++errors;dispatch_semaphore_signal(slots);return; }
             const size_t bytes=draw.vertices.size()*sizeof(Vertex);
@@ -554,8 +586,11 @@ struct SoundMetalRenderer::Impl {
             pass.colorAttachments[0].loadAction=MTLLoadActionClear;
             pass.colorAttachments[0].storeAction=MTLStoreActionStore;
             pass.colorAttachments[0].clearColor=MTLClearColorMake(0.043,0.063,0.080,1);
+            pass.depthAttachment.texture=depthTexture;pass.depthAttachment.clearDepth=1;
+            pass.depthAttachment.loadAction=MTLLoadActionClear;pass.depthAttachment.storeAction=MTLStoreActionDontCare;
             id<MTLRenderCommandEncoder> encoder=[command renderCommandEncoderWithDescriptor:pass];
             [encoder setRenderPipelineState:pipeline];
+            [encoder setDepthStencilState:depthState];
             [encoder setVertexBuffer:buffers[slot] offset:0 atIndex:0];
             [encoder setFragmentTexture:atlas atIndex:0];
             [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:draw.vertices.size()];
@@ -665,6 +700,10 @@ bool SoundMetalRenderer::start(CAMetalLayer *layer,bool offscreen,const char *as
     MTLRenderPipelineDescriptor *desc=[MTLRenderPipelineDescriptor new];
     desc.vertexFunction=[library newFunctionWithName:@"sound_vertex"];
     desc.fragmentFunction=[library newFunctionWithName:@"sound_fragment"];
+    desc.depthAttachmentPixelFormat=MTLPixelFormatDepth32Float;
+    MTLDepthStencilDescriptor *depth=[MTLDepthStencilDescriptor new];
+    depth.depthCompareFunction=MTLCompareFunctionLessEqual;depth.depthWriteEnabled=YES;
+    p.depthState=[p.device newDepthStencilStateWithDescriptor:depth];
     auto attachment=desc.colorAttachments[0];
     attachment.pixelFormat=MTLPixelFormatBGRA8Unorm;
     attachment.blendingEnabled=YES;
@@ -694,6 +733,7 @@ Metrics SoundMetalRenderer::metrics() const {
     const auto &p=*m_impl; Metrics result;
     result.frames=p.frames.load();result.cpuNs=p.cpuNs.load();result.gpuNs=p.gpuNs.load();result.errors=p.errors.load();
     result.audioBlocksSeen=p.audioBlocksSeen.load();result.visualBlocksSeen=p.visualBlocksSeen.load();result.animatedFrames=p.animatedFrames.load();result.peakVertices=p.peakVertices.load();
+    result.roadFrames=p.roadFrames.load();result.movingRoadFrames=p.movingRoadFrames.load();result.roadDistance=p.roadDistance.load();
     for(int i=0;i<256;++i){result.cpuHistogram[i]=p.cpuHist[i].load();result.gpuHistogram[i]=p.gpuHist[i].load();}
     return result;
 }

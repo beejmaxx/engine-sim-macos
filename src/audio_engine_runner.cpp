@@ -1,4 +1,5 @@
 #include "audio_engine_runner.h"
+#include "automatic_transmission.h"
 #include "engine.h"
 #include "ignition_module.h"
 #include "simulator.h"
@@ -48,6 +49,8 @@ bool AudioEngineRunner::start(Simulator &simulator, double reserveSeconds, bool 
     m_exhaustMix = simulator.synthesizer().getAudioParameters().convolution;
     m_roughness = simulator.synthesizer().getAudioParameters().inputSampleNoise;
     m_ignition = false; m_cranking = false; m_blipping = false;
+    m_drive = false; m_shifting = false; m_gear = -1;
+    m_vehicleSpeed = 0; m_clutch = 0; m_brake = 0; m_appliedThrottle = 0;
     m_thread = std::thread(&AudioEngineRunner::run, this);
     const auto deadline = SDL_GetTicks() + 10000;
     while (!m_ready && SDL_GetTicks() < deadline) SDL_Delay(1);
@@ -66,7 +69,9 @@ AudioEngineRunner::Snapshot AudioEngineRunner::snapshot() const {
         m_maxBlockMs.load(), m_cpuSeconds.load(), m_maxCpuBlockMs.load(),
         m_maxWakeupOverrunMs.load(), m_blocks.load(), m_schedulingStatus.load(),
         m_throttle.load(), m_volume.load(), m_exhaustMix.load(), m_roughness.load(),
-        m_ignition.load(), m_cranking.load(), m_blipping.load()};
+        m_ignition.load(), m_cranking.load(), m_blipping.load(),
+        m_vehicleSpeed.load(), m_clutch.load(), m_brake.load(), m_appliedThrottle.load(),
+        m_gear.load(), m_drive.load(), m_shifting.load()};
 }
 
 void AudioEngineRunner::run() {
@@ -93,6 +98,10 @@ void AudioEngineRunner::run() {
     auto &sim = *m_simulator;
     auto &synth = sim.synthesizer();
     auto &engine = *sim.getEngine();
+    auto &transmission = *sim.getTransmission();
+    auto &vehicle = *sim.getVehicle();
+    AutomaticTransmission automatic;
+    double brake = 0;
     double starterSeconds = 0, simulatedSeconds = 0, starterThrottle = 0;
     double throttle = 0, blipSeconds = 0, blipThrottle = 0;
     const double initialCpu = threadCpuSeconds();
@@ -133,10 +142,23 @@ void AudioEngineRunner::run() {
                 audio.dF_F_mix=std::clamp(command.value,0.0,.01);synth.setAudioParameters(audio);break;
             case Action::LowNoise:
                 audio.airNoise=std::clamp(command.value,0.0,1.0);synth.setAudioParameters(audio);break;
-            case Action::Dyno: sim.m_dyno.m_enabled=command.value>0;break;
+            case Action::Drive:
+                automatic.setEnabled(command.value > 0, transmission);
+                if (automatic.enabled()) sim.m_dyno.m_enabled = false;
+                break;
+            case Action::Brake: brake = std::clamp(command.value, 0.0, 1.0);break;
+            case Action::Dyno:
+                if (command.value > 0 && automatic.enabled()) automatic.setEnabled(false, transmission);
+                sim.m_dyno.m_enabled=command.value>0;break;
             case Action::DynoSpeed: sim.m_dyno.m_rotationSpeed=units::rpm(std::clamp(command.value,500.0,20000.0));break;
-            case Action::Clutch: sim.getTransmission()->setClutchPressure(std::clamp(command.value,0.0,1.0));break;
-            case Action::Gear: sim.getTransmission()->changeGear(sim.getTransmission()->getGear()+int(command.value));break;
+            case Action::Clutch:
+                if (automatic.enabled()) automatic.setEnabled(false, transmission);
+                transmission.setClutchPressure(std::clamp(command.value,0.0,1.0));break;
+            case Action::Gear: {
+                const int next = transmission.getGear() + int(command.value);
+                if (automatic.enabled()) automatic.setEnabled(false, transmission);
+                transmission.changeGear(next);break;
+            }
             case Action::Blip:
                 if (engine.getIgnitionModule()->m_enabled) {
                     blipThrottle = std::clamp(command.value, 0.0, 1.0);
@@ -171,8 +193,11 @@ void AudioEngineRunner::run() {
             synth.setAudioParameters(audio);
         }
         sim.m_starterMotor.m_enabled = starterSeconds > 0;
-        engine.setSpeedControl(std::max(throttle,
-            std::max(starterSeconds > 0 ? starterThrottle : 0, blipSeconds > 0 ? blipThrottle : 0)));
+        vehicle.setBrake(brake);
+        const double requested = std::max(brake > 0 ? 0 : throttle,
+            std::max(starterSeconds > 0 ? starterThrottle : 0, brake == 0 && blipSeconds > 0 ? blipThrottle : 0));
+        const double applied = automatic.update(transmission, engine, vehicle, requested, starterSeconds > 0, 0.005);
+        engine.setSpeedControl(applied);
         sim.startFrame(0.005);
         while (sim.simulateStep()) { }
         sim.endFrame();
@@ -194,6 +219,9 @@ void AudioEngineRunner::run() {
         m_exhaustMix = audio.convolution; m_roughness = audio.inputSampleNoise;
         m_ignition = engine.getIgnitionModule()->m_enabled;
         m_cranking = starterSeconds > 0; m_blipping = blipSeconds > 0;
+        m_vehicleSpeed = vehicle.getSpeed(); m_clutch = transmission.getClutchPressure();
+        m_brake = brake; m_appliedThrottle = applied; m_gear = transmission.getGear();
+        m_drive = automatic.enabled(); m_shifting = automatic.shifting();
         m_simulatedSeconds = simulatedSeconds;
     }
 }
@@ -220,6 +248,7 @@ void AudioEngineRunner::publishVisuals(double simulatedSeconds) {
     frame.afr=engine.getIntakeAfr();frame.exhaustO2=engine.getExhaustO2();frame.exhaustFlow=sim.getTotalExhaustFlow();
     frame.fuelLiters=engine.getTotalVolumeFuelConsumed()/units::L;
     frame.vehicleSpeed=sim.getVehicle()->getSpeed();frame.torque=sim.getFilteredDynoTorque();frame.power=frame.torque*engine.getSpeed();
+    frame.vehicleDistance=sim.getVehicle()->getTravelledDistance();
     frame.throttleAngle=engine.getThrottlePlateAngle();frame.physicsHz=sim.getSimulationFrequency();
     const auto audio=sim.synthesizer().getAudioParameters();
     frame.highFrequency=audio.dF_F_mix;frame.lowNoise=audio.airNoise;frame.levelerGain=sim.synthesizer().getLevelerGain();

@@ -216,3 +216,98 @@ int verifySoundSession(const std::filesystem::path &assets, std::size_t preset,
     std::cout << "Sound test " << (passed ? "PASS" : "FAIL") << ": " << prefix << ".log\n";
     return passed ? 0 : 1;
 }
+
+int verifyDriveSession(const std::filesystem::path &assets, std::size_t preset,
+    const std::string &prefix) {
+    std::ofstream log(prefix + ".log"), telemetry(prefix + "-drive.csv");
+    if (!log || !telemetry) return 2;
+    SoundSession session;
+    if (!session.open(preset, assets)) { std::cerr << session.error() << '\n'; return 2; }
+    bool passed = true;
+    const auto check = [&](bool condition, const char *name) {
+        log << "CHECK " << name << '=' << (condition ? "PASS" : "FAIL") << std::endl;
+        passed &= condition;
+    };
+    Capture capture;
+    capture.blocks.resize(60000);
+    capture.samples.resize(48 * 192000);
+    SDL_AudioSpec format{};
+    int frames = 0;
+    SDL_GetAudioDeviceFormat(session.device(), &format, &frames);
+    const auto start = SDL_GetTicksNS();
+    if (!SDL_SetAudioPostmixCallback(session.device(), Capture::mix, &capture)) return 2;
+    log << "preset=" << session.preset().id << " driver=" << SDL_GetCurrentAudioDriver()
+        << " rate=" << format.freq << '\n';
+    telemetry << "seconds,rpm,gear,mph,pedal,applied_throttle,clutch,brake,shifting,missing_frames\n";
+    check(session.startEngine(), "start_queued");
+    int stage = 0, maxGear = -1, previousGear = -1, upshifts = 0;
+    double peakSpeed = 0, beforeShiftRpm = 0, shiftAt = -1, rpmDrop = 0;
+    bool torqueCut = false;
+    SdlAudioOutput::Statistics warmup{};
+    while (true) {
+        const double time = (SDL_GetTicksNS() - start) / 1e9;
+        if (time >= 41) break;
+        const auto state = session.snapshot();
+        const auto audio = session.statistics();
+        if (time < 1) warmup = audio;
+        if (stage == 0 && time >= 3) {
+            check(state.rpm > 200 && !state.cranking, "engine_running");
+            check(session.command(AudioEngineRunner::Action::Drive, 1), "drive_queued"); ++stage;
+        } else if (stage == 1 && time >= 4) {
+            check(state.drive && state.gear == 0, "drive_engages_first");
+            check(session.command(AudioEngineRunner::Action::Throttle, 1), "accelerator_queued"); ++stage;
+        } else if (stage == 2 && time >= 6) {
+            const auto before = state.blocks;
+            SDL_Delay(1200);
+            check(session.snapshot().blocks > before + 100, "driving_continues_without_ui"); ++stage;
+        } else if (stage == 3 && time >= 28) {
+            check(session.command(AudioEngineRunner::Action::Throttle, 0), "lift_queued");
+            check(session.command(AudioEngineRunner::Action::Brake, 1), "brake_queued"); ++stage;
+        } else if (stage == 4 && time >= 38) {
+            check(state.vehicleSpeed < 1 && state.rpm > 400, "brakes_stop_car_without_stalling");
+            check(state.gear == 0, "returns_to_first");
+            check(session.command(AudioEngineRunner::Action::Drive, 0), "neutral_queued"); ++stage;
+        } else if (stage == 5 && time >= 39) {
+            check(!state.drive && state.gear == -1 && state.clutch == 0, "neutral_disengages_drivetrain");
+            session.command(AudioEngineRunner::Action::Brake, 0); ++stage;
+        }
+        maxGear = std::max(maxGear, state.gear);
+        peakSpeed = std::max(peakSpeed, state.vehicleSpeed);
+        if (state.gear > previousGear && previousGear >= 0 && time < 28) {
+            ++upshifts; beforeShiftRpm = state.rpm; shiftAt = time;
+            log << "UPSHIFT t=" << time << " gear=" << state.gear + 1 << " rpm=" << state.rpm << '\n';
+        }
+        if (shiftAt >= 0 && time - shiftAt < .8) rpmDrop = std::max(rpmDrop, beforeShiftRpm - state.rpm);
+        previousGear = state.gear;
+        torqueCut |= state.throttle == 1 && state.shifting && state.appliedThrottle < .5;
+        telemetry << time << ',' << state.rpm << ',' << state.gear + 1 << ',' << state.vehicleSpeed / .44704
+            << ',' << state.throttle << ',' << state.appliedThrottle << ',' << state.clutch << ',' << state.brake
+            << ',' << state.shifting << ',' << audio.silenceFrames << '\n';
+        SDL_Delay(50);
+    }
+    SDL_SetAudioPostmixCallback(session.device(), nullptr, nullptr);
+    const auto state = session.snapshot();
+    const auto audio = session.statistics();
+    session.close();
+    std::size_t clipped = 0, silence = 0;
+    for (std::size_t i = 0; i < capture.sampleCount; ++i)
+        if (std::abs(int(capture.samples[i])) >= 32760) ++clipped;
+    for (std::size_t i = 0; i < capture.blockCount; ++i) {
+        const double time = (capture.blocks[i].ns - start) / 1e9;
+        if (time > 3 && time < 40 && capture.blocks[i].peak == 0) ++silence;
+    }
+    check(stage == 6, "all_drive_stages_completed");
+    check(upshifts >= 2 && maxGear >= 2 && peakSpeed > 15, "accelerates_through_gears");
+    check(rpmDrop > 300 && torqueCut, "shifts_change_actual_engine_rpm_and_throttle");
+    check(audio.silenceFrames == warmup.silenceFrames && audio.writeErrors == 0, "no_missing_audio");
+    check(clipped == 0 && silence == 0, "no_clipping_or_silent_blocks");
+    check(!capture.overflow && capture.blockCount > 0 && capture.save(prefix, start, format.freq), "pcm_capture_saved");
+    telemetry.flush();
+    check(telemetry.good(), "drive_telemetry_saved");
+    log << "SUMMARY result=" << (passed ? "PASS" : "FAIL") << " max_gear=" << maxGear + 1
+        << " upshifts=" << upshifts << " peak_mph=" << peakSpeed / .44704 << " rpm_drop=" << rpmDrop
+        << " missing_frames=" << audio.silenceFrames - warmup.silenceFrames << " clipped_samples=" << clipped
+        << " silent_blocks=" << silence << " max_block_ms=" << state.maxBlockMs << std::endl;
+    std::cout << "Drive test " << (passed ? "PASS" : "FAIL") << ": " << prefix << ".log\n";
+    return passed ? 0 : 1;
+}
