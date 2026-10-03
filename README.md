@@ -23,7 +23,7 @@ focuses on responsive sound and a native Mac interface.
   launch and up/downshifts, and briefly cuts throttle during a shift. Braking
   cuts the accelerator, prevents new upshifts, and downshifts for engine braking.
 - Clear native Mac monospaced text, rasterized once into a Retina font atlas.
-- A closed forest circuit with steering, tire grip, off-road resistance and
+- A closed forest circuit with arcade steering, off-road resistance and
   barrier collisions. A three-lap time trial has ordered checkpoints, lap/best
   timers, a finish state and a minimap. Recover to the last checkpoint or start
   a new run without reloading the engine.
@@ -32,11 +32,10 @@ focuses on responsive sound and a native Mac interface.
   a responsive chase camera and a large MPH/RPM/gear HUD. The engine simulation drives
   actual forward travel; road and wheel motion use metres.
   The sun stays in the world, moving across the view as the car turns.
-- Progressive keyboard steering with front/rear tyre forces and chassis yaw
-  inertia. Quick taps make small corrections at speed; sustained presses build
-  a turn, with prompt release and countersteering. Grip and resistance change
-  gradually as individual tyres cross the shoulder. Corner-speed and braking
-  cues help judge when to slow down.
+- Arcade handling with strong cornering, fast self-centring and forgiving wall
+  scrapes. Short keyboard taps still make small corrections at speed, and grass
+  retains most steering control. Strong brakes work with **S**, **Down** or
+  **Space** in driving view; **X** operates the ignition there.
 - Audio production runs independently of the UI. The renderer consumes bounded
   snapshots; a slow or hidden window does not have to delay sound production.
 - Native Metal rendering, display-synchronized by default, with optional glow
@@ -93,11 +92,11 @@ as the app, avoiding a dependency on a newer Homebrew binary's minimum OS.
 | Input | Action |
 | --- | --- |
 | **E**, ENGINE LIBRARY, or macOS Engines menu | Choose an engine |
-| **Space** | Start/stop ignition |
-| **A** or **AUTO DRIVE** | Automatic Drive / neutral |
+| **X** in the game, **Space** on the dashboard | Start/stop ignition |
+| **G** in the game, **A** on the dashboard, or **AUTO DRIVE** | Automatic Drive / neutral |
 | **Hold R**, **W**, **Up**, or the **GAS** button | Accelerate while held |
-| **Hold S**, **Down**, or **BRAKE** | Apply the brakes (takes priority over throttle) |
-| **Left / Right** in the game | Steer; releasing returns the wheels toward centre |
+| **Hold S**, **Down**, **Space** in the game, or **BRAKE** | Apply the brakes (takes priority over throttle) |
+| **A / D** or **Left / Right** in the game | Steer; releasing returns the wheels toward centre |
 | **C** or **RECOVER** | Stop and return to the last checkpoint; adds a 3-second penalty |
 | **Backspace** or **NEW RUN** | Stop and restart the three-lap time trial |
 | **V** or the view button | Switch between the driving scene and engine dashboard |
@@ -106,7 +105,7 @@ as the app, avoiding a dependency on a newer Homebrew binary's minimum OS.
 | **B** | Short automatic rev |
 | **M** | Mute/unmute |
 | Drag VOL / CONV / +HF / ~LF / ~HF | Volume, exhaust convolution, high-frequency gain, noise |
-| **D** | Toggle dyno |
+| **D** on the dashboard | Toggle dyno |
 | **[ / ]** | Change cutaway layer |
 | **F / U** | Toggle glow / uncapped rendering |
 | **1 / 2** | Quick-select Supra / LS |
@@ -121,19 +120,23 @@ unless `--play` is passed. To list preset IDs:
 ./run-sound-gui.sh --preset bmw_m52b28 --play
 ```
 
-To hear a run through the gears, press **Space**, **A**, then hold **R**. Drive
+To hear a run through the gears, start with **X** in the game or **Space** on
+the dashboard, select Drive with **G** in the game or **A** on the dashboard,
+then hold **R** or **W**. Drive
 handles the launch clutch and shifts automatically; **S** brakes. The gear panel
-shows `D1`, `D2`, etc., and highlights shifts. Press **A** again for neutral and
+shows `D1`, `D2`, etc., and highlights shifts. Press **G** in the game or
+**A** on the dashboard again for neutral and
 free revving. Manual gear/clutch changes and the dyno leave automatic mode.
 This is automatic control of the existing simulated clutch/gearbox, not a
 separate torque-converter model.
 
-Press **V** to enter the game, or launch with `--road`. Drive the forest circuit,
+Press **V** to enter the game, or launch with `--road`. **WASD** and the arrow
+keys drive; **G** toggles Drive/neutral. Drive the forest circuit,
 pass all eight checkpoints in order, and complete three laps. Brake before tight
-corners: grip is limited, and leaving the asphalt increases resistance. Recovery
+corners; leaving the asphalt increases resistance, while steering stays forgiving. Recovery
 adds a three-second penalty and returns you to the last passed checkpoint. The
 GT3 preset uses the Porsche body; other presets use the concept car. Handling
-is an approximate game model. Car and scenery credits are in
+is deliberately arcade-style. Car and scenery credits are in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 For the terminal interface without graphics, run `./run-sound.sh`. For the

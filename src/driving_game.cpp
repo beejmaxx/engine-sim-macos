@@ -6,6 +6,9 @@ DrivingPoint unit(DrivingPoint p) {return p*(1/std::max(1e-8,drivingLength(p)));
 double heading(DrivingPoint p) {return std::atan2(p.x,p.z);}
 }
 DrivingCourse::DrivingCourse() {
+    // Sweeping, metre-scaled bends for high-speed driving. The old first bend
+    // needed a 65 mph approach even when steering was held fully at 100 mph.
+    constexpr double Scale=2;
     constexpr std::array<DrivingPoint,17> knots{{{0,0},{0,150},{65,260},{220,280},
         {340,220},{330,80},{250,25},{265,-100},{180,-220},{30,-250},
         {-140,-190},{-200,-60},{-180,60},{-105,70},{-65,-45},{-30,-120},{0,-90}}};
@@ -14,7 +17,7 @@ DrivingCourse::DrivingCourse() {
         const double t=u-std::floor(u),t2=t*t,t3=t2*t;
         const auto a=knots[(k+knots.size()-1)%knots.size()],b=knots[k];
         const auto c=knots[(k+1)%knots.size()],d=knots[(k+2)%knots.size()];
-        path[i]=(b*2+(c-a)*t+(a*2-b*5+c*4-d)*t2+(b*3-a-c*3+d)*t3)*.5;
+        path[i]=(b*2+(c-a)*t+(a*2-b*5+c*4-d)*t2+(b*3-a-c*3+d)*t3)*(.5*Scale);
         if(i)lengths[i]=lengths[i-1]+drivingLength(path[i]-path[i-1]);
     }
     path.back()=path.front();
@@ -59,11 +62,11 @@ DrivingCourse::CornerAdvice DrivingCourse::cornerAdvice(double progress,double s
     for(double ahead=0;ahead<=250;ahead+=3) {
         const double curve=at(progress+ahead).curvature;
         if(std::abs(curve)<.002)continue;
-        const double target=std::clamp(std::sqrt(7.0/std::abs(curve)),5.0,80.0);
+        const double target=DrivingHandling::cornerSpeed(curve);
         // Leave reaction distance and use comfortable braking, below the
         // maximum tyre/brake force. This is advice, never an automatic pedal.
         const double distance=std::max(0.0,ahead-speed*.55-8);
-        const double permitted=std::sqrt(target*target+2*7.5*distance);
+        const double permitted=std::sqrt(target*target+2*14*distance);
         if(permitted<allowable) {
             allowable=permitted;result={target,ahead,std::max(0.0,(speed*speed-target*target)/(2*std::max(1.0,distance))),curve>0 ? 1 : -1};
         }
@@ -117,8 +120,11 @@ void DrivingGame::step(double dt,double distance,double speed,double steering,Dr
         const auto projected=location.point+normal*edge;
         state.x=projected.x;state.z=projected.z;
         if(toward>0) {
-            const auto rebound=unit(velocity-normal*(toward*1.22));
-            state.velocityYaw=heading(rebound);state.yaw=drivingAngle(state.yaw+drivingAngle(state.velocityYaw-state.yaw)*.55);
+            // Forgiving wall scrape: redirect along the barrier instead of
+            // bouncing sideways and leaving the car pointed into the wall.
+            const double direction=drivingDot(velocity,location.forward)>=0 ? 1 : -1;
+            const auto rebound=unit(location.forward*direction-normal*.04);
+            state.velocityYaw=state.yaw=heading(rebound);
             handling.impact(speed,drivingAngle(state.velocityYaw-state.yaw));
             if(impactSeconds<=0 && speed>1) {++state.collisions;state.impact=std::clamp(toward*speed/18,.15,1.0);}
             impactSeconds=.24;
@@ -167,7 +173,14 @@ double DrivingGame::pilotSteering() const {
     return std::clamp(curvature/DrivingHandling::maximumCurvature(state.speed),-1.0,1.0);
 }
 double DrivingGame::pilotSpeed() const {
-    double curve=.001;
-    for(double ahead=0;ahead<=75;ahead+=3)curve=std::max(curve,std::abs(track.at(state.progress+ahead).curvature));
-    return std::clamp(std::sqrt(6.0/curve),5.0,38.0);
+    double target=50;
+    // The validation driver must actually brake from its faster straights.
+    // A fixed 75 m peek missed hairpins when approaching above 100 mph.
+    for(double ahead=0;ahead<=250;ahead+=3) {
+        const double curve=std::abs(track.at(state.progress+ahead).curvature);
+        const double corner=DrivingHandling::cornerSpeed(curve);
+        const double brakingDistance=std::max(0.0,ahead-state.speed*.4-4);
+        target=std::min(target,std::sqrt(corner*corner+2*7.5*brakingDistance));
+    }
+    return target;
 }

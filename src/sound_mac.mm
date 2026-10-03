@@ -57,7 +57,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     NSTimer *_timer;
     NSMenuItem *_engineMenuItem;
     unsigned _heldRev, _heldBrake;
-    bool _steerLeft,_steerRight;
+    unsigned _steerLeft,_steerRight;
     double _gamePhaseAt;
     Metrics _gameBefore;
     GameAudioProbe _gameAudio;
@@ -91,6 +91,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (void)holdBrake:(BOOL)down source:(unsigned)source;
 - (void)cancelHeldRev;
 - (void)steer:(BOOL)down right:(BOOL)right;
+- (void)steer:(BOOL)down right:(BOOL)right source:(unsigned)source;
 - (void)gameTest:(double)t;
 - (NSMenu *)engineMenu;
 - (State)currentState;
@@ -169,14 +170,22 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         [self.controller holdRev:NO source:1];
     else if([event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"s"])
         [self.controller holdBrake:NO source:1];
-    else if([event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"w"] || [event.charactersIgnoringModifiers characterAtIndex:0]==NSUpArrowFunctionKey)
+    else if([event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"w"])
         [self.controller holdRev:NO source:8];
+    else if([event.charactersIgnoringModifiers characterAtIndex:0]==NSUpArrowFunctionKey)
+        [self.controller holdRev:NO source:16];
     else if([event.charactersIgnoringModifiers characterAtIndex:0]==NSDownArrowFunctionKey)
         [self.controller holdBrake:NO source:8];
     else if([event.charactersIgnoringModifiers characterAtIndex:0]==NSLeftArrowFunctionKey)
-        [self.controller steer:NO right:NO];
+        [self.controller steer:NO right:NO source:1];
     else if([event.charactersIgnoringModifiers characterAtIndex:0]==NSRightArrowFunctionKey)
-        [self.controller steer:NO right:YES];
+        [self.controller steer:NO right:YES source:1];
+    else if([event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"a"])
+        [self.controller steer:NO right:NO source:2];
+    else if([event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"d"])
+        [self.controller steer:NO right:YES source:2];
+    else if([event.charactersIgnoringModifiers isEqualToString:@" "])
+        [self.controller holdBrake:NO source:16];
     else if([event.charactersIgnoringModifiers isEqualToString:@"\r"])
         [self.controller holdBrake:NO source:4];
     else [super keyUp:event];
@@ -277,7 +286,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (void)loadPreset:(int)preset {
     if(_closing || _loader.joinable())return;
     [self cancelHeldRev];_heldRev=0;_revPending=false;_state.revHeld=false;
-    [self holdBrake:NO source:15];[self steer:NO right:NO];[self steer:NO right:YES];_heldBrake=0;_brakePending=false;_state.brakeHeld=false;_state.drive=false;
+    [self holdBrake:NO source:31];[self steer:NO right:NO];[self steer:NO right:YES];_heldBrake=0;_brakePending=false;_state.brakeHeld=false;_state.drive=false;
     _state.loading=true;_state.ready=false;_state.ignitionRequested=false;_state.preset=preset;
     _engineMenuItem.submenu=[self engineMenu];
     put(_state.title,SoundSession::presets()[preset].title);
@@ -314,6 +323,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     return menu;
 }
 - (void)selectEngine:(NSMenuItem *)item {
+    if(_state.automated && _options.uiTest.empty())return;
     if(item.tag>=0 && item.tag<SoundSession::presets().size())[self loadPreset:int(item.tag)];
 }
 - (void)flushHeldRev {
@@ -332,27 +342,37 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     if(_log)_log<<"held_throttle="<<_state.throttle<<std::endl;
     [self publish];
 }
-- (void)cancelHeldRev { [self holdRev:NO source:11]; }
+- (void)cancelHeldRev { [self holdRev:NO source:31]; }
 - (void)steer:(BOOL)down right:(BOOL)right {
-    if(right)_steerRight=down;else _steerLeft=down;
-    _state.steering=float(_steerRight)-float(_steerLeft);[self publish];
+    [self steer:down right:right source:3]; // focus loss clears every alias
+}
+- (void)steer:(BOOL)down right:(BOOL)right source:(unsigned)source {
+    auto &held=right ? _steerRight : _steerLeft;
+    held=down ? held|source : held&~source;
+    const float input=float(bool(_steerRight))-float(bool(_steerLeft));
+    if(input==_state.steering)return;
+    _state.steering=input;
+    if(_log)_log<<"steering_event t="<<now()-_loadedAt<<" input="<<input<<std::endl;
+    [self publish];
 }
 - (void)holdBrake:(BOOL)down source:(unsigned)source {
     if(down && !_state.ready)return;
     const unsigned previous=_heldBrake;
     _heldBrake=down ? (_heldBrake|source) : (_heldBrake&~source);
     if(bool(previous)==bool(_heldBrake))return;
+    if(_log)_log<<"brake_event t="<<now()-_loadedAt<<" pressure="<<bool(_heldBrake)<<std::endl;
     _state.brakeHeld=_heldBrake!=0;_brakePending=true;[self flushHeldRev];[self publish];
 }
-- (void)windowDidResignKey:(NSNotification *)notification { (void)notification;[self cancelHeldRev];[self holdBrake:NO source:15];[self steer:NO right:NO];[self steer:NO right:YES]; }
-- (void)applicationDidResignActive:(NSNotification *)notification { (void)notification;[self cancelHeldRev];[self holdBrake:NO source:15];[self steer:NO right:NO];[self steer:NO right:YES]; }
-- (void)menuWillOpen:(NSMenu *)menu { (void)menu;[self cancelHeldRev];[self holdBrake:NO source:15];[self steer:NO right:NO];[self steer:NO right:YES]; }
+- (void)windowDidResignKey:(NSNotification *)notification { (void)notification;[self cancelHeldRev];[self holdBrake:NO source:31];[self steer:NO right:NO];[self steer:NO right:YES]; }
+- (void)applicationDidResignActive:(NSNotification *)notification { (void)notification;[self cancelHeldRev];[self holdBrake:NO source:31];[self steer:NO right:NO];[self steer:NO right:YES]; }
+- (void)menuWillOpen:(NSMenu *)menu { (void)menu;[self cancelHeldRev];[self holdBrake:NO source:31];[self steer:NO right:NO];[self steer:NO right:YES]; }
 - (void)activate:(Control)c {
     if(c==None)return;
     _state.focus=c;
     if(c==Effects) { _state.effects=!_state.effects;[self publish];return; }
     if(c==Uncapped) { _state.uncapped=!_state.uncapped;[self publish];return; }
     if(c==RoadView) {
+        [self cancelHeldRev];[self holdBrake:NO source:31];
         [self steer:NO right:NO];[self steer:NO right:YES];
         _state.roadView=!_state.roadView;
         if(bounds(_state.focus,_state.roadView).w==0)_state.focus=None;
@@ -375,7 +395,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         if([self send:AudioEngineRunner::Action::Drive value:!_state.drive]) {
             _state.drive=!_state.drive;_state.dyno=false;
             _options.drive=_state.drive;
-            put(_state.notice,_state.drive ? "DRIVE: hold R to accelerate / S to brake / A for neutral" : "NEUTRAL: R throttle / B blip / A automatic drive");
+            if(_state.roadView)put(_state.notice,_state.drive ? "DRIVE: W gas / S or Space brake / X ignition" : "NEUTRAL: G automatic drive");
+            else put(_state.notice,_state.drive ? "DRIVE: hold R to accelerate / S to brake / A for neutral" : "NEUTRAL: R throttle / B blip / A automatic drive");
         }
         break;
     case Brake: [self holdBrake:YES source:4];break;
@@ -393,7 +414,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         if(sent) {
             _state.ignitionRequested=!_state.ignitionRequested;_state.throttle=0;
             [self send:AudioEngineRunner::Action::Throttle value:0];
-            put(_state.notice,_state.ignitionRequested ? "A drive / Hold R throttle / Hold S brake / Space stop" : "Engine off. Press Space or Start engine.");
+            if(_state.roadView)put(_state.notice,_state.ignitionRequested ? "WASD drive / S or Space brake / X ignition" : "Engine off. Press X or Start engine.");
+            else put(_state.notice,_state.ignitionRequested ? "A drive / Hold R throttle / Hold S brake / Space stop" : "Engine off. Press Space or Start engine.");
             if(_state.ignitionRequested && !_activity)
                 _activity=[NSProcessInfo.processInfo beginActivityWithOptions:NSActivityUserInitiated reason:@"Live engine audio"];
             if(!_state.ignitionRequested && _activity) { [NSProcessInfo.processInfo endActivity:_activity];_activity=nil; }
@@ -446,12 +468,20 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 }
 - (void)hover:(Control)c pressed:(Control)pressed { _state.hover=c;_state.pressed=pressed;[self publish]; }
 - (void)key:(NSString *)key shift:(BOOL)shift {
+    // Onscreen benchmarks can receive focus from LaunchServices. Physical
+    // typing must not mute, steer or stop a measurement; the native input
+    // suite deliberately exercises this handler and is the sole exception.
+    if(_state.automated && _options.uiTest.empty())return;
     if(!key.length)return;
     unichar c=[key.lowercaseString characterAtIndex:0];
     if(_state.roadView) {
-        if(c==NSLeftArrowFunctionKey || c==NSRightArrowFunctionKey) {[self steer:YES right:c==NSRightArrowFunctionKey];return;}
-        if(c==NSUpArrowFunctionKey || c=='w') {[self holdRev:YES source:8];return;}
+        if(c==NSLeftArrowFunctionKey || c==NSRightArrowFunctionKey) {[self steer:YES right:c==NSRightArrowFunctionKey source:1];return;}
+        if(c=='a' || c=='d') {[self steer:YES right:c=='d' source:2];return;}
+        if(c==NSUpArrowFunctionKey || c=='w') {[self holdRev:YES source:c=='w' ? 8 : 16];return;}
         if(c==NSDownArrowFunctionKey) {[self holdBrake:YES source:8];return;}
+        if(c==' ') {[self holdBrake:YES source:16];return;}
+        if(c=='x') {[self activate:Start];return;}
+        if(c=='g') {[self activate:Drive];return;}
         if(c=='c') {[self activate:RecoverCar];return;}
         if(c==NSDeleteCharacter || c==NSBackspaceCharacter) {[self activate:RestartRace];return;}
     }
@@ -612,20 +642,36 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         [_view testKeyUp:@"\uF703"];[self check:_state.steering==-1 name:"steering_key_up_preserves_other_direction"];
         [self windowDidResignKey:[NSNotification notificationWithName:NSWindowDidResignKeyNotification object:_window]];
         [self check:_state.steering==0 name:"focus_loss_releases_steering"];
+        const bool driveBefore=_state.drive,dynoBefore=_state.dyno;
+        [_view testKey:@"d"];
+        [self check:_state.steering==1 && _state.drive==driveBefore && _state.dyno==dynoBefore name:"wasd_d_steers_without_enabling_dyno"];
+        [_view testKey:@"\uF703"];[_view testKeyUp:@"d"];
+        [self check:_state.steering==1 name:"arrow_stays_held_when_wasd_alias_released"];
+        [_view testKeyUp:@"\uF703"];[_view testKey:@"a"];
+        [self check:_state.steering==-1 && _state.drive==driveBefore name:"wasd_a_steers_without_disabling_drive"];
+        [_view testKey:@"\uF702"];[_view testKeyUp:@"\uF702"];
+        [self check:_state.steering==-1 name:"wasd_stays_held_when_arrow_alias_released"];
+        [self windowDidResignKey:[NSNotification notificationWithName:NSWindowDidResignKeyNotification object:_window]];
+        [self check:_state.steering==0 name:"focus_loss_releases_wasd"];
         [_view testKey:@"\uF700"];[self check:_state.revHeld && _state.throttle==1 name:"game_up_arrow_accelerates"];
-        [_view testKeyUp:@"\uF700"];[self check:!_state.revHeld && _state.throttle==0 name:"game_up_arrow_release"];
+        [_view testKey:@"w"];[_view testKeyUp:@"\uF700"];
+        [self check:_state.revHeld && _state.throttle==1 name:"w_stays_held_when_up_arrow_released"];
+        [_view testKeyUp:@"w"];[self check:!_state.revHeld && _state.throttle==0 name:"game_up_arrow_release"];
         [_view testKey:@"\uF701"];[self check:_state.brakeHeld name:"game_down_arrow_brakes"];
         [_view testKeyUp:@"\uF701"];[self check:!_state.brakeHeld name:"game_down_arrow_release"];
-        [_view testKey:@"a"];++_testStage;
+        [_view testKey:@"g"];++_testStage;
     } else if(_testStage==14 && t>18) {
         [self check:s.drive && s.gear==0 name:"automatic_drive_key"];
-        [_view testKey:@"r"];[_view testKey:@"s"];++_testStage;
+        [_view testKey:@"r"];[_view testKey:@" "];++_testStage;
     } else if(_testStage==15 && t>18.5) {
         [self check:s.brake==1 && s.appliedThrottle==0 name:"brake_overrides_accelerator"];
+        [self check:s.ignition && _state.ignitionRequested name:"space_brakes_without_stopping_engine"];
+        [_view testKey:@"s"];[_view testKeyUp:@" "];
+        [self check:_state.brakeHeld name:"s_stays_held_when_space_released"];
         [_view testKeyUp:@"s"];++_testStage;
     } else if(_testStage==16 && t>19) {
         [self check:s.brake==0 && !_state.brakeHeld name:"brake_key_up"];
-        [_view testKey:@"s"];[self windowDidResignKey:[NSNotification notificationWithName:NSWindowDidResignKeyNotification object:_window]];
+        [_view testKey:@" "];[self windowDidResignKey:[NSNotification notificationWithName:NSWindowDidResignKeyNotification object:_window]];
         ++_testStage;
     } else if(_testStage==17 && t>19.5) {
         [self check:s.brake==0 && s.throttle==0 name:"focus_loss_releases_both_pedals"];
@@ -751,6 +797,9 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (void)gameTest:(double)t {
     auto metrics=_renderer.metrics();const auto engine=_session->snapshot();
     if(_testStage==0 && t>3) {
+        [_view testKey:@"m"];[_view testKey:@" "];[_view testKey:@"d"];[_view testKey:@"x"];
+        [self check:!_state.muted && !_state.brakeHeld && _state.steering==0 && _state.ignitionRequested
+            name:"automatic_measurement_ignores_gameplay_keys"];
         [self check:_gameAudio.attach(_session->device()) name:"game_pcm_probe_attached"];
         _benchMeasured=true;_benchAt=now();_benchMetrics=metrics;_benchAudio=_session->statistics();
         [self check:metrics.sunVisible name:"world_sun_visible_at_start"];
@@ -858,7 +907,7 @@ int main(int argc,char **argv) {
                         <<"--game-test PREFIX              Circuit, collision, recovery and audio test\n"
                         <<"--drive-test PREFIX [--preset ID]  Acceleration/shifts/braking + PCM capture\n"
                         <<"--list-engines  List the IDs accepted by --preset\n"
-                        <<"Keys: arrows steer/gas/brake, C recover, Backspace new run, Space start/stop, A auto drive/neutral, hold R throttle, hold S brake, V car/pistons, B blip, I idle, M mute, F effects, U frame mode, E library, 1/2 favorites\n";
+                        <<"Keys: WASD/arrows drive, G drive/neutral in game (A on dashboard), C recover, Backspace new run, Space brake in game / ignition on dashboard, X game ignition, hold R throttle, hold S brake, V car/pistons, B blip, I idle, M mute, F effects, U frame mode, E library, 1/2 favorites\n";
                     return 0;
                 }
                 if(arg=="--list-engines") {

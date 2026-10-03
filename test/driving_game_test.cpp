@@ -7,7 +7,7 @@
 #include <limits>
 
 TEST(DrivingCourse, ClosedCircuitHasContinuousMetreScaledGeometry) {
-    DrivingCourse track;EXPECT_GT(track.length(),1000);EXPECT_LT(track.length(),2500);
+    DrivingCourse track;EXPECT_GT(track.length(),3500);EXPECT_LT(track.length(),5000);
     const auto start=track.at(0),finish=track.at(track.length());
     EXPECT_NEAR(drivingLength(start.point-finish.point),0,1e-8);
     for(double s=0;s<track.length();s+=5) {
@@ -17,10 +17,10 @@ TEST(DrivingCourse, ClosedCircuitHasContinuousMetreScaledGeometry) {
 }
 TEST(DrivingCourse, CornerAdviceWarnsForHighSpeedApproachBeforeReachingCorner) {
     DrivingCourse course;bool warning=false;
-    for(double distance=0;distance<150;distance+=5) {
-        const auto advice=course.cornerAdvice(distance,100*.44704);
+    for(double distance=0;distance<course.length();distance+=5) {
+        const auto advice=course.cornerAdvice(distance,120*.44704);
         if(advice.deceleration>6 && advice.distance>20) {
-            warning=true;EXPECT_LT(advice.speed,100*.44704);EXPECT_NE(advice.direction,0);
+            warning=true;EXPECT_LT(advice.speed,120*.44704);EXPECT_NE(advice.direction,0);
         }
     }
     EXPECT_TRUE(warning);
@@ -34,11 +34,11 @@ TEST(DrivingGame, EngineTravelAndSteeringDetermineMotionWithoutGraphics) {
     EXPECT_GT(drivingAngle(game.snapshot().yaw-straight.yaw),.08);
     EXPECT_NEAR(game.snapshot().wheelDistance,15,1e-7);
 }
-TEST(DrivingGame, TireGripLimitsCorneringAndBarriersContainCar) {
+TEST(DrivingGame, ArcadeTurnRateIsBoundedAndBarriersContainCar) {
     DrivingGame game;
     for(int i=0;i<1000;++i) {
         game.advance(1./120,40./120,40,1);
-        EXPECT_LE(std::abs(game.snapshot().lateralG),1.12001);
+        EXPECT_LE(std::abs(game.snapshot().lateralG),DrivingHandling::maximumCurvature(40)*40*40/DrivingHandling::Gravity+1e-5);
         const auto p=game.course().nearest({game.snapshot().x,game.snapshot().z});
         EXPECT_LE(std::abs(p.lateral),DrivingCourse::BarrierWidth-1.18+.2);
     }
@@ -56,7 +56,7 @@ TEST(DrivingHandling, ShortKeyboardTapsAllowSmallHighSpeedCorrections) {
         }
         EXPECT_GT(lateral,.1);EXPECT_LT(lateral,.5); // useful correction, not a lane jump
         EXPECT_LT(std::abs(yaw),.0175); // less than one degree
-        EXPECT_LT(peakG,.2);EXPECT_LT(std::abs(chassis.snapshot().lateralG),.01);
+        EXPECT_LT(peakG,.5);EXPECT_LT(std::abs(chassis.snapshot().lateralG),.01);
         EXPECT_LT(std::abs(chassis.snapshot().yawRate),.001);
     }
 }
@@ -67,7 +67,7 @@ TEST(DrivingHandling, HeldKeyboardTurnBuildsGripAndCountersteeringRecovers) {
         EXPECT_GT(chassis.snapshot().lateralG,.6); // held input still corners decisively
         for(int i=0;i<144;++i) {
             chassis.advance(1./240,speed,-1,DrivingHandling::Input::Keyboard,{});
-            EXPECT_LE(std::abs(chassis.snapshot().lateralG),DrivingHandling::RoadGrip);
+            EXPECT_LE(std::abs(chassis.snapshot().lateralG),DrivingHandling::maximumCurvature(speed)*speed*speed/DrivingHandling::Gravity+1e-5);
         }
         EXPECT_LT(chassis.snapshot().yawRate,0);EXPECT_LT(chassis.snapshot().lateralG,-.4);
         for(int i=0;i<480;++i)chassis.advance(1./240,speed,0,DrivingHandling::Input::Keyboard,{});
@@ -85,70 +85,79 @@ TEST(DrivingHandling, ReleasingHighSpeedTurnSettlesPromptlyWithoutYawSwing) {
         for(int i=0;i<360;++i) {
             chassis.advance(1./240,speed,0,DrivingHandling::Input::Keyboard,{});
             EXPECT_GT(chassis.snapshot().yawRate,-.005);
-            if(i==83)EXPECT_LT(std::abs(chassis.snapshot().lateralG),.1); // 350 ms
+            if(i==23)EXPECT_LT(std::abs(chassis.snapshot().lateralG),.1); // 100 ms
         }
         EXPECT_LT(std::abs(chassis.snapshot().yawRate),.001);
         EXPECT_LT(std::abs(chassis.snapshot().lateralG),.01);
     }
 }
-TEST(DrivingHandling, HighSpeedCountersteerReachesOppositeCornerWithin450ms) {
+TEST(DrivingHandling, HighSpeedCountersteerReachesOppositeCornerWithin200ms) {
     for(double speed:{26.8224,44.704}) {
         DrivingHandling chassis;
         for(int i=0;i<240;++i)chassis.advance(1./240,speed,1,DrivingHandling::Input::Keyboard,{});
-        for(int i=0;i<108;++i)chassis.advance(1./240,speed,-1,DrivingHandling::Input::Keyboard,{});
+        for(int i=0;i<48;++i)chassis.advance(1./240,speed,-1,DrivingHandling::Input::Keyboard,{});
         EXPECT_LT(chassis.snapshot().lateralG,-.7);
         EXPECT_LT(chassis.snapshot().yawRate,0);
     }
 }
 TEST(DrivingCourse, ShoulderGripChangesOnlyAsTyreContactPatchesLeaveTarmac) {
     DrivingCourse::Location straight;
-    straight.lateral=4.5;
+    straight.lateral=DrivingCourse::HalfWidth-1;
     const auto tarmac=DrivingCourse::tyreSurface(straight,0);
     EXPECT_EQ(tarmac.front,0);EXPECT_EQ(tarmac.rear,0);
     straight.lateral=DrivingCourse::HalfWidth-.78;
     const auto edge=DrivingCourse::tyreSurface(straight,0);
     EXPECT_NEAR(edge.front,.25,1e-9);EXPECT_NEAR(edge.rear,.25,1e-9);
-    straight.lateral=5;
+    straight.lateral=DrivingCourse::HalfWidth-.5;
     const auto outsidePair=DrivingCourse::tyreSurface(straight,0);
     EXPECT_EQ(outsidePair.front,.5);EXPECT_EQ(outsidePair.rear,.5);
     const auto angled=DrivingCourse::tyreSurface(straight,.5);
     EXPECT_GT(angled.front,angled.rear); // front tyres cross first
-    straight.lateral=6.5;
+    straight.lateral=DrivingCourse::HalfWidth+1;
     const auto grass=DrivingCourse::tyreSurface(straight,0);
     EXPECT_EQ(grass.front,1);EXPECT_EQ(grass.rear,1);
     double previous=0;
-    for(double lateral=4.4;lateral<5.1;lateral+=.005) {
+    for(double lateral=DrivingCourse::HalfWidth-1.1;lateral<DrivingCourse::HalfWidth-.4;lateral+=.005) {
         straight.lateral=lateral;
         const auto surface=DrivingCourse::tyreSurface(straight,0);
         EXPECT_GE(surface.front,previous);EXPECT_LT(surface.front-previous,.02);
         previous=surface.front;
     }
 }
-TEST(DrivingHandling, PartialShoulderKeepsGripAndBothAxlesRemainStable) {
+TEST(DrivingHandling, ShoulderRetainsSteeringAuthorityWithoutStoredSideslip) {
     for(auto surface:{DrivingHandling::Surface{.5,.5},{0,.5},{.5,0},{1,1}}) {
         DrivingHandling chassis;
         for(int i=0;i<480;++i)chassis.advance(1./240,30,1,DrivingHandling::Input::Keyboard,surface);
-        const double front=DrivingHandling::RoadGrip+(DrivingHandling::DirtGrip-DrivingHandling::RoadGrip)*surface.front;
-        const double rear=DrivingHandling::RoadGrip+(DrivingHandling::DirtGrip-DrivingHandling::RoadGrip)*surface.rear;
-        const double available=(front*DrivingHandling::RearAxle+rear*DrivingHandling::FrontAxle)/DrivingHandling::Wheelbase;
-        EXPECT_GT(chassis.snapshot().lateralG,.3);EXPECT_LE(chassis.snapshot().lateralG,available);
-        if(surface.front==.5 && surface.rear==.5)EXPECT_GT(chassis.snapshot().lateralG,.6);
+        const double full=DrivingHandling::maximumCurvature(30)*30;
+        EXPECT_GE(chassis.snapshot().yawRate,full*.84);EXPECT_LE(chassis.snapshot().yawRate,full);
+        EXPECT_EQ(chassis.snapshot().lateralSpeed,0);
         for(int i=0;i<480;++i)chassis.advance(1./240,30,0,DrivingHandling::Input::Keyboard,surface);
         EXPECT_LT(std::abs(chassis.snapshot().lateralG),.01);
         EXPECT_LT(std::abs(chassis.snapshot().yawRate),.001);
     }
 }
-TEST(DrivingHandling, ChassisCannotInstantlyRotateVelocityAndIsStableAtLowSpeed) {
+TEST(DrivingHandling, ArcadeResponseIsSmoothAndStableAtLowSpeed) {
     DrivingHandling highway;highway.advance(1./240,44.704,1,DrivingHandling::Input::Analog,{});
-    EXPECT_LT(std::abs(highway.snapshot().yawRate),.02);
+    EXPECT_GT(highway.snapshot().yawRate,0);EXPECT_LT(highway.snapshot().yawRate,.12);
     for(double speed:{0.,2.,5.,10.,30.,60.}) {
         DrivingHandling fine,batched;
         for(int i=0;i<120;++i)fine.advance(1./240,speed,.7,DrivingHandling::Input::Keyboard,{});
         for(int i=0;i<30;++i)batched.advance(1./60,speed,.7,DrivingHandling::Input::Keyboard,{});
         EXPECT_NEAR(fine.snapshot().yawRate,batched.snapshot().yawRate,1e-9);
         EXPECT_NEAR(fine.snapshot().lateralSpeed,batched.snapshot().lateralSpeed,1e-9);
-        EXPECT_LE(std::abs(fine.snapshot().lateralG),DrivingHandling::RoadGrip);
+        EXPECT_LE(std::abs(fine.snapshot().yawRate),DrivingHandling::maximumCurvature(speed)*speed+1e-5);
     }
+}
+TEST(DrivingHandling, ArcadeFullLockCanTurnAt100mphWithoutRealisticUndersteer) {
+    DrivingHandling chassis;
+    for(int i=0;i<120;++i)chassis.advance(1./240,44.704,1,DrivingHandling::Input::Keyboard,{});
+    EXPECT_GT(chassis.snapshot().lateralG,3.4);
+    EXPECT_LT(44.704/chassis.snapshot().yawRate,60); // old tune needed ~170 m
+    EXPECT_EQ(chassis.snapshot().lateralSpeed,0);
+    chassis.impact(44.704,.5);
+    EXPECT_EQ(chassis.snapshot().lateralSpeed,0);
+    chassis.advance(.01,0,0,DrivingHandling::Input::Keyboard,{});
+    EXPECT_EQ(chassis.snapshot().yawRate,0);
 }
 TEST(DrivingGame, SteeringMotionIsIndependentOfUpdateBatchSize) {
     DrivingGame fine,batched;
@@ -171,7 +180,7 @@ TEST(DrivingGame, OffroadAddsVehicleLoadAndRecoveryUsesCheckpoint) {
 }
 TEST(DrivingGame, FullCourseRequiresOrderedCheckpointsAndFinishesThreeLaps) {
     DrivingGame game;
-    for(int i=0;i<60000 && !game.snapshot().finished;++i) {
+    for(int i=0;i<100000 && !game.snapshot().finished;++i) {
         const double speed=std::min(18.0,game.pilotSpeed());
         game.advance(.01,speed*.01,speed,game.pilotSteering());
     }
@@ -195,7 +204,17 @@ TEST(DrivingGame, KeyboardPressesAt10HzCompleteCircuitWithoutTouchingShoulder) {
         ASSERT_FALSE(game.snapshot().offroad);
     }
     EXPECT_EQ(game.snapshot().laps,1);EXPECT_GT(peakSpeed,36); // over 80 mph
-    EXPECT_LT(maxLateral,4.4);
+    EXPECT_LT(maxLateral,DrivingCourse::HalfWidth-1.1);
+}
+TEST(DrivingGame, KeyboardCanTakeFirstSweepingBendAt100mph) {
+    DrivingGame game;double key=0;
+    for(int i=0;i<2400;++i) {
+        if(i%12==0)key=drivingKeyboardTestInput(game,44.704);
+        game.advance(1./120,44.704/120,44.704,key,DrivingHandling::Input::Keyboard);
+        ASSERT_EQ(game.snapshot().collisions,0);
+        ASSERT_FALSE(game.snapshot().offroad);
+    }
+    EXPECT_GT(game.snapshot().progress,800);
 }
 TEST(DrivingGame, CirclingAndRepeatedFinishAreaDoNotAwardLaps) {
     DrivingGame game;

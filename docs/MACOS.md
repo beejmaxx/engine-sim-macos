@@ -37,11 +37,13 @@ and uses a short torque cut plus clutch re-engagement during shifts. It reads
 the script's actual gear ratios and vehicle parameters; RPM and speed come from
 the physics simulation. Hysteresis prevents rapid gear hunting. Braking adds
 force to the vehicle's existing drag constraint, and the clutch opens near a
-stop to avoid stalling. Full brake requests 1.15 g before drag; braking cuts the
+stop to avoid stalling. Full brake requests an arcade 2.6 g before drag; braking cuts the
 accelerator, inhibits new upshifts, and uses higher downshift thresholds to
 retain engine braking. The GUI only sends pedal/mode commands.
 
-`A` toggles automatic Drive; hold `R` for acceleration and `S` for brakes.
+`A` toggles automatic Drive on the dashboard; `G` does so in the driving view.
+Hold `R`/`W` for acceleration and `S` for brakes. In driving view, Space also
+brakes and `X` starts/stops ignition; dashboard Space retains its ignition action.
 Keyboard/mouse pedal holds are released on focus loss. The throttle slider
 remains a persistent pedal setting. Manual clutch/gear control and the dyno
 exit automatic mode. Drive works with the scripted forward gears; there is no
@@ -50,36 +52,37 @@ reverse gear or separately simulated torque converter.
 ## Driving game
 
 `V` switches between the game and engine dashboard. `--road` selects the game
-on launch. Left/right steer, R/W/up accelerate, S/down brake, C recovers, and
+on launch. A/D or left/right steer, R/W/up accelerate, S/down/Space brake, X
+operates ignition, C recovers, and
 Backspace starts a new run. Pedals and steering release on focus loss. The game
 reserves arrow keys for driving even when a dashboard slider previously had focus.
+WASD steering cannot change Drive or the dyno; `G` toggles Drive in the game.
+Held aliases release independently, so releasing D while right-arrow is held
+does not centre the steering. Dashboard A/D retain their gearbox/dyno actions.
 
 `engine-sim-driving` is a device-independent library with a closed Catmull-Rom
-forest circuit in metres and a simple chassis model. It uses front/rear tyre
-forces, speed-sensitive keyboard steering, limited lateral grip, body roll/pitch,
-and barrier projection/rebound. The engine's vehicle distance and speed supply
-longitudinal movement. The track is 11 m wide, with barriers at 8.5 m from its
-centre. Off-road resistance and impacts add bounded opposing force to the existing
+forest circuit in metres and an arcade chassis. It uses speed-sensitive steering,
+assisted grip, body roll/pitch, and forgiving barrier projection. A wall impact
+aligns the car along the barrier rather than throwing it sideways. The engine's
+vehicle distance and speed supply longitudinal movement. The track is approximately 4.2 km long and 15 m wide,
+with barriers at 12.5 m from its centre. Its broader bends and runoff give
+drivers more room for high-speed corrections. Off-road resistance and impacts
+add bounded opposing force to the existing
 vehicle drag constraint, so slowing down remains part of the engine/drivetrain
 simulation. This is approximate game handling, not a calibrated tire/suspension model.
 
-Keyboard steering builds progressively: a 100 ms tap makes a small correction
-rather than immediately requesting full cornering grip. Release and reversal
-centre the input quickly. One rack response moves the wheels; independent front
-and rear tyre forces then accelerate lateral velocity and chassis yaw inertia.
-There is no artificial travel-heading filter. Parking speeds blend into bicycle
-geometry; integration is bounded at 240 Hz on the game worker. Full sustained
-input requests about 0.92 g at speed; road grip is capped at 1.12 g, dirt at 0.48 g.
-The road tyre tune reduces residual cornering after release and avoids a large
-uncommanded yaw reversal. A nonlinear keyboard ramp gives precision near centre
-and reaches full input in about 180 ms; release centres it in 100 ms. The HUD's
-steering marker displays normalized input, independent of speed-sensitive wheel
-lock. Each axle's grip blends according to its two tyre contact patches on the
-shoulder, including car orientation. Road resistance scales with the off-road
-fraction. Touching the grass no longer puts all four tyres on dirt at once.
-The HUD looks 250 metres ahead for curvature and shows a suggested corner speed,
-distance, and a braking cue with reaction distance. Guidance never applies the
-pedals or steering for normal play.
+Keyboard input uses a cubic ramp: small taps make precise corrections, while a
+held key reaches full turn strength in about 167 ms. Releasing centres the input
+in 50 ms, and the turn rate settles rapidly without residual sideslip. At 100 mph,
+full lock gives about a 57 m turning radius, deliberately beyond realistic tyre
+grip. The car's travel follows its heading; it does not keep sliding toward a wall
+after input is released. Grass retains 85% of steering authority, blended from
+individual tyre contact patches. The engine still owns forward speed, distance,
+gearbox load and sound. Integration remains bounded at 240 Hz on the game worker.
+The HUD's steering marker displays normalized input, independent of wheel lock.
+Road resistance scales with the off-road fraction. The HUD's corner-speed advice
+uses the new turning envelope and looks 250 metres ahead, with braking/reaction
+distance. Guidance never applies pedals or steering for normal play.
 
 Eight ordered forward checkpoints validate each lap. Crossing the finish backwards
 or circling near the start cannot award laps. Three laps finish the time trial.
@@ -205,6 +208,29 @@ the Supra and GT3 without a real-time audio device.
 Run performance checks on their own. Debug builds, concurrent compilation,
 thermal throttling, and other active simulators can invalidate timing results.
 
+## Arcade handling validation
+
+The arcade update replaces the tyre-force lateral chassis with assisted turning.
+In the deterministic 100 mph input check, full lock reaches a roughly 57 m turn
+radius; release settles below 0.1 g in 88 ms and opposite 0.7 g countersteering
+in 167 ms. A 100 ms tap moves the car about 0.29 m sideways over 1.5 seconds.
+These are intentional game responses, not real-car performance estimates.
+A test driver using left/released/right keys at 10 Hz completed the 4.27 km course
+at up to 112 mph with no collisions or shoulder contact. This verifies control
+behaviour but does not substitute for player feedback about feel.
+
+The actual simulated Porsche drivetrain stops from just below 100 mph in
+37.7 m / 1.70 s and from just below 60 mph in 13.8 m / 1.03 s. The Supra also
+passes the stronger stopping bounds. Both retain a running engine and return
+to first gear; brakes still cut throttle and prevent new upshifts. Space is a
+brake in driving view; X operates ignition. Dashboard Space retains ignition.
+
+All 73 portable checks and 80 packaged checks passed, as did the native input
+suite across seven engines. Direct Metal captures confirm the resized minimap
+and control labels. An onscreen CoreAudio run logged zero missing frames over
+23 seconds, including forced UI and render stalls, but ended before the full-lap
+PCM report; no completed full-lap audio result is claimed for this update.
+
 ## Observed M1 baseline
 
 A 15-second, 2560 x 1600 V8 dashboard run with glow enabled averaged **59.87
@@ -287,7 +313,8 @@ and the existing audio sample reserve.
 The separate real-output audio/control check passed with zero missing, clipped
 or unexpected silent samples and **34.0 ms maximum command-to-mixer response**.
 
-In recorded full-brake runs, the GT3 stopped from approximately 60 mph in
+Before the arcade handling update, recorded full-brake runs showed the GT3
+stopping from approximately 60 mph in
 **30 m / 2.3 s**, compared with about **38 m / 2.9 s** before; near 100 mph it
 stopped in **80 m / 3.7 s**, compared with **101 m / 4.7 s**. Sampling began just
 below each speed threshold; these are game measurements, not manufacturer data.

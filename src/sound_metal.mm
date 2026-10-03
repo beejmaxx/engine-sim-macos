@@ -334,14 +334,17 @@ public:
             quad({0,Height-240+i*10.f,Width,10},color(0x091321,.65f*i/24));
         }
         text("ENGINE SIMULATOR  /  DRIVE",26,24,0,0xD1DDE4);
-        text(s.title.data(),24,44,2);text("FOREST CIRCUIT / 3 LAP TIME TRIAL",26,74,0,0xD1DDE4);
+        text(s.title.data(),24,44,2);text("ARCADE DRIVE / 3 LAP TIME TRIAL",26,74,0,0xD1DDE4);
         if(s.carBody==State::CarBody::Concept)text("CONCEPT BODY",26,94,0,Dim);
         button(Library,"ENGINES [E]",s);button(RoadView,"DASH [V]",s);
         char label[96];std::snprintf(label,sizeof(label),"%.0f FPS  /  %s",fps,s.missing ? "AUDIO GAPS" : "AUDIO OK");right(label,1254,68,0,s.missing ? Red : 0xD1DDE4);
         std::snprintf(label,sizeof(label),"%.2f KM",v.vehicleDistance/1000);right(label,1254,89,0,0xD1DDE4);
         rounded({990,116,266,180},8,color(0x0C1721,.68f));
-        auto map=[&](DrivingPoint p) {return simd_float2{1009+float((p.x+215)*.395),132+float((300-p.z)*.25)};};
         const auto &course=roadScene.course();const auto &path=course.points();
+        DrivingPoint lo=path.front(),hi=lo;
+        for(const auto &p:path) {lo.x=std::min(lo.x,p.x);lo.z=std::min(lo.z,p.z);hi.x=std::max(hi.x,p.x);hi.z=std::max(hi.z,p.z);}
+        const double mapScale=std::min(234/(hi.x-lo.x),148/(hi.z-lo.z));
+        auto map=[&](DrivingPoint p) {return simd_float2{1123+float((p.x-(lo.x+hi.x)*.5)*mapScale),206-float((p.z-(lo.z+hi.z)*.5)*mapScale)};};
         for(int i=0;i<DrivingCourse::Segments;++i) {const auto a=map(path[i]),b=map(path[i+1]);line(a.x,a.y,b.x,b.y,3,color(Ink,.45f));}
         const auto checkpoint=map(course.at(game.nextCheckpoint*course.length()/8).point);
         circle(checkpoint.x,checkpoint.y,4,color(Blue));const auto position=map({game.x,game.z});
@@ -393,13 +396,13 @@ public:
         const auto throttle=bounds(Throttle,true);const float x=throttle.x+7,y=throttle.y+17,w=throttle.w-14;
         line(x,y,x+w,y,3,color(Ink,.2f));line(x,y,x+w*std::sqrt(std::clamp(s.throttle,0.f,1.f)),y,3,color(Ink));
         circle(x+w*std::sqrt(std::clamp(s.throttle,0.f,1.f)),y,4,color(Ink));
-        button(Drive,s.engine.drive ? "DRIVE [A]" : "NEUTRAL [A]",s,s.engine.drive);
-        text(s.engine.brake>0 ? "BRAKING" : s.engine.shifting ? "SHIFTING" : !s.engine.ignition ? "ENGINE OFF" : "ARROWS STEER / R GAS / S BRAKE",172,700,0,s.engine.brake>0 ? Red : Ink);
-        button(Start,s.ignitionRequested ? "STOP [SPACE]" : "START [SPACE]",s);
+        button(Drive,s.engine.drive ? "DRIVE [G]" : "NEUTRAL [G]",s,s.engine.drive);
+        text(s.engine.brake>0 ? "BRAKING" : s.engine.shifting ? "SHIFTING" : !s.engine.ignition ? "ENGINE OFF" : "WASD DRIVE / S OR SPACE BRAKE",172,700,0,s.engine.brake>0 ? Red : Ink);
+        button(Start,s.ignitionRequested ? "STOP [X]" : "START [X]",s);
         button(Rev,"GAS [R]",s,s.revHeld);button(Brake,"BRAKE [S]",s,s.brakeHeld);
         button(Idle,"IDLE [I]",s);button(Mute,s.muted ? "UNMUTE" : "MUTE [M]",s,s.muted);
         button(RecoverCar,"RECOVER [C]",s);button(RestartRace,"NEW RUN [BKSP]",s);
-        if(game.offroad)text("OFF ROAD / LOW GRIP",24,605,0,Yellow);
+        if(game.offroad)text("ON THE SHOULDER",24,605,0,Yellow);
         line(398,668,506,668,2,color(Ink,.25f));circle(452+float(game.steeringInput)*54,668,5,color(Blue));text("STEERING",399,633,0,0xD1DDE4);
     }
     void draw(const State &s,const EngineVisualLayout &layout,const EngineVisualSnapshot &v,

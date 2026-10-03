@@ -87,7 +87,7 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
         double maxSpeed = 0, beforeShiftRpm = 0, biggestRpmDrop = 0, afterShiftTime = -1;
         bool torqueCut = false;
         int brakeUpshifts=0;
-        double sixtyDistance=-1,sixtyTime=-1,stopDistance=-1,stopTime=-1;
+        double sixtyDistance=-1,sixtyTime=-1,hundredDistance=-1,hundredTime=-1,stopDistance=-1,stopTime=-1;
         int16_t samples[512]{};
         constexpr double block=.005; // same controller cadence as the sound host
         for (int frame = 0; frame < 8200; ++frame) {
@@ -111,6 +111,9 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
             maxGear = std::max(maxGear, gear);
             maxSpeed = std::max(maxSpeed, output.vehicle->getSpeed());
             if(time>28.4 && gear>previousGear)++brakeUpshifts; // permit an already started shift
+            if(time>=28 && hundredTime<0 && output.vehicle->getSpeed()<=100*.44704) {
+                hundredTime=time;hundredDistance=output.vehicle->getTravelledDistance();
+            }
             if(time>=28 && sixtyTime<0 && output.vehicle->getSpeed()<=60*.44704) {
                 sixtyTime=time;sixtyDistance=output.vehicle->getTravelledDistance();
             }
@@ -132,7 +135,8 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
         EXPECT_GT(audible, 10000);
         EXPECT_EQ(brakeUpshifts,0);
         ASSERT_GT(sixtyTime,28);ASSERT_GT(stopTime,sixtyTime);
-        EXPECT_LT(stopDistance-sixtyDistance,34);EXPECT_LT(stopTime-sixtyTime,2.7);
+        EXPECT_LT(stopDistance-sixtyDistance,17);EXPECT_LT(stopTime-sixtyTime,1.3);
+        ASSERT_GT(hundredTime,28);EXPECT_LT(stopDistance-hundredDistance,44);EXPECT_LT(stopTime-hundredTime,2.1);
         EXPECT_LT(output.vehicle->getSpeed(), 1);
         EXPECT_GT(output.engine->getRpm(), 400);
         EXPECT_EQ(output.transmission->getGear(), 0);
@@ -143,6 +147,7 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
             << " peak_mph=" << maxSpeed / .44704 << " rpm_drop=" << biggestRpmDrop
             << " stopped_mph=" << output.vehicle->getSpeed() / .44704
             << " sixty_stop_m=" << stopDistance-sixtyDistance << " sixty_stop_s=" << stopTime-sixtyTime
+            << " hundred_stop_m=" << stopDistance-hundredDistance << " hundred_stop_s=" << stopTime-hundredTime
             << " idle_rpm=" << output.engine->getRpm() << '\n';
         simulator->releaseSimulation(); delete simulator;
         output.engine->destroy(); delete output.engine;

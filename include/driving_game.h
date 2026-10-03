@@ -19,7 +19,7 @@ inline double drivingAngle(double a) {return std::remainder(a,6.283185307179586)
 class DrivingCourse {
 public:
     static constexpr int Segments=360;
-    static constexpr double HalfWidth=5.5, BarrierWidth=8.5;
+    static constexpr double HalfWidth=7.5, BarrierWidth=12.5;
     struct Location {DrivingPoint point{},forward{0,1},right{1,0};double distance=0,lateral=0,curvature=0;int segment=0;};
     struct CornerAdvice {double speed=80,distance=0,deceleration=0;int direction=0;};
     DrivingCourse();

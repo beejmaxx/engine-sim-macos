@@ -5,7 +5,9 @@
 
 class Vehicle {
     public:
-        static constexpr double MaximumBrakeDeceleration = 9.81 * 1.15;
+        // Deliberately strong arcade brakes. Force still opposes the actual
+        // vehicle motion, so speed, gearbox load and engine sound stay linked.
+        static constexpr double MaximumBrakeDeceleration = 9.81 * 2.6;
         struct Parameters {
             double mass;
             double dragCoefficient;

@@ -13,7 +13,9 @@ inline double drivingKeyboardTestInput(const DrivingGame &game,double speed) {
         for(int i=0;i<42;++i) {
             preview.advance(1./120,speed/120,speed,i<12 ? key : 0,DrivingHandling::Input::Keyboard);
             const auto &pose=preview.snapshot();
-            const auto road=preview.course().at(pose.progress+std::clamp(speed*.3,3.0,12.0));
+            // The preview already moves into the future. A second lookahead
+            // biases the driver toward cutting the inside of fast corners.
+            const auto road=preview.course().at(pose.progress);
             const double angle=drivingAngle(pose.velocityYaw-std::atan2(road.forward.x,road.forward.z));
             cost+=(pose.lateral*pose.lateral+angle*angle*speed*speed*.25)/42;
         }

@@ -59,7 +59,7 @@ void DrivingGameWorker::run() {
                     automatic && !keys ? DrivingHandling::Input::Analog : DrivingHandling::Input::Keyboard);
             }
             audio->setRoadDeceleration(enabled ? game.snapshot().roadDeceleration : 0);
-            last=next;speedTarget=game.pilotSpeed();
+            last=next;speedTarget=pilot ? game.pilotSpeed() : 0;
             std::lock_guard<std::mutex> lock(poseMutex);
             previous=current;current=game.snapshot();
             if(current.time<=previous.time || current.recoveries!=previous.recoveries)previous=current;

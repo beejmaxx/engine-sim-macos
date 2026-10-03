@@ -52,30 +52,31 @@ class SoundRoadScene {
     static float random(uint32_t v) {v^=v>>16;v*=0x7feb352d;v^=v>>15;v*=0x846ca68b;v^=v>>16;return (v&0xffffff)/float(0x1000000);}
     void buildWorld() {
         faces.reserve(14000);
+        constexpr double road=DrivingCourse::HalfWidth,barrier=DrivingCourse::BarrierWidth;
         for(double s=0;s<track.length();s+=4) {
             const double end=std::min(track.length(),s+4);
-            ribbon(s,end,-7.6,7.6,0,0x807D68);
-            ribbon(s,end,-5.5,5.5,.006f,0x343B40,4);
+            ribbon(s,end,-barrier+1,barrier-1,0,0x807D68);
+            ribbon(s,end,-road,road,.006f,0x343B40,4);
             for(double side:{-1.,1.}) {
-                ribbon(s,end,side*5.5,side*5.95,.012f,int(s/4)%2 ? 0xD6D8D1 : 0xAB4039);
-                ribbon(s,end,side*5.35,side*5.42,.014f,0xE0E0D3);
+                ribbon(s,end,side*road,side*(road+.45),.012f,int(s/4)%2 ? 0xD6D8D1 : 0xAB4039);
+                ribbon(s,end,side*(road-.15),side*(road-.08),.014f,0xE0E0D3);
                 const auto a=track.at(s),b=track.at(end);
-                for(float height:{.42f,.76f})quad(point(a.point+a.right*(side*8.5),height),
-                    point(b.point+b.right*(side*8.5),height),point(b.point+b.right*(side*8.5),height+.17f),
-                    point(a.point+a.right*(side*8.5),height+.17f),0x9CA9AF,true);
+                for(float height:{.42f,.76f})quad(point(a.point+a.right*(side*barrier),height),
+                    point(b.point+b.right*(side*barrier),height),point(b.point+b.right*(side*barrier),height+.17f),
+                    point(a.point+a.right*(side*barrier),height+.17f),0x9CA9AF,true);
                 if(int(s/4)%2==0) {
-                    const auto p=a.point+a.right*(side*8.5);
+                    const auto p=a.point+a.right*(side*barrier);
                     box(point(p-DrivingPoint{.05,.05}),point(p+DrivingPoint{.05,.05},.98f),0x707C82);
                 }
             }
         }
         // Finish stripe and eight numbered checkpoints are fixed world gates.
-        for(int z=0;z<6;++z)for(int x=0;x<22;++x)
-            ribbon(z*.5,z*.5+.5,-5.5+x*.5,-5+x*.5,.022f,(x+z)%2 ? 0x192027 : 0xE9EBE2);
+        for(int z=0;z<6;++z)for(int x=0;x<int(road*4);++x)
+            ribbon(z*.5,z*.5+.5,-road+x*.5,-road+.5+x*.5,.022f,(x+z)%2 ? 0x192027 : 0xE9EBE2);
         for(int gate=0;gate<8;++gate) {
             const auto p=track.at(gate*track.length()/8);
             for(double side:{-1.,1.}) {
-                const auto q=p.point+p.right*(side*7.9);
+                const auto q=p.point+p.right*(side*(barrier-.6));
                 box(point(q-DrivingPoint{.12,.12}),point(q+DrivingPoint{.12,.12},4.2f),0x687B84);
                 for(int h=0;h<5;++h) {
                     const auto a=q+p.right*(-.35),b=q+p.right*.35;
@@ -88,8 +89,8 @@ class SoundRoadScene {
         for(int i=0;i<DrivingCourse::Segments;i+=3)for(int row=0;row<3;++row)for(int side:{-1,1}) {
             const uint32_t seed=i*47+row*1367+(side+1)*7187;
             const auto location=track.at(track.length()*i/DrivingCourse::Segments+random(seed)*6);
-            const auto p=location.point+location.right*(side*(16+row*15+random(seed+1)*8));
-            if(std::abs(track.nearest(p).lateral)<12)continue;
+            const auto p=location.point+location.right*(side*(DrivingCourse::BarrierWidth+7.5+row*15+random(seed+1)*8));
+            if(std::abs(track.nearest(p).lateral)<DrivingCourse::BarrierWidth+3.5)continue;
             trees.push_back({float(p.x),float(p.z),10+random(seed+2)*5,.82f+random(seed+3)*.18f});
         }
     }
