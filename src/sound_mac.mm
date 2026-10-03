@@ -509,17 +509,20 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         const double elapsed=now()-_loadedAt;
         if(_log && elapsed-_lastLog>=1) {
             _lastLog=elapsed;
+            const auto metrics=_renderer.metrics();
             _log<<std::fixed<<std::setprecision(3)<<"t="<<elapsed<<" rpm="<<_state.engine.rpm
                 <<" throttle="<<_state.engine.throttle<<" volume="<<_state.engine.volume
                 <<" ignition="<<_state.engine.ignition<<" cranking="<<_state.engine.cranking
                 <<" drive="<<_state.engine.drive<<" gear="<<_state.engine.gear+1
                 <<" mph="<<_state.engine.vehicleSpeed/.44704<<" shifting="<<_state.engine.shifting
                 <<" brake="<<_state.engine.brake<<" applied_throttle="<<_state.engine.appliedThrottle
-                <<" distance_m="<<_renderer.metrics().roadDistance<<" road_view="<<_state.roadView
-                <<" game_x="<<_renderer.metrics().game.x<<" game_z="<<_renderer.metrics().game.z
-                <<" laps="<<_renderer.metrics().game.laps<<" checkpoint="<<_renderer.metrics().game.nextCheckpoint
-                <<" steering="<<_state.steering<<" collisions="<<_renderer.metrics().game.collisions
-                <<" missing="<<audio.silenceFrames<<" frames="<<_renderer.metrics().frames<<std::endl;
+                <<" distance_m="<<metrics.roadDistance<<" road_view="<<_state.roadView
+                <<" game_x="<<metrics.game.x<<" game_z="<<metrics.game.z
+                <<" laps="<<metrics.game.laps<<" checkpoint="<<metrics.game.nextCheckpoint
+                <<" steering="<<_state.steering<<" steering_input="<<metrics.game.steeringInput
+                <<" lateral_g="<<metrics.game.lateralG<<" offroad_fraction="<<metrics.game.offroadFraction
+                <<" collisions="<<metrics.game.collisions
+                <<" missing="<<audio.silenceFrames<<" frames="<<metrics.frames<<std::endl;
         }
         if(!_options.uiTest.empty())[self runTests:elapsed];
         else if(!_options.gameTest.empty())[self gameTest:elapsed];
@@ -752,7 +755,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         _benchMeasured=true;_benchAt=now();_benchMetrics=metrics;_benchAudio=_session->statistics();
         [self check:metrics.sunVisible name:"world_sun_visible_at_start"];
         _renderer.capture((_options.gameTest+"-sun-start.png").c_str());
-        _state.testPilot=true;_testStage=1;
+        _state.testPilot=true;_state.testKeyboard=true;_testStage=1;
     }
     if(_testStage>=1 && _testStage<=4) {
         if(!_gameSunMoved && metrics.sunVisible && std::abs(metrics.sunX-_benchMetrics.sunX)>120) {
@@ -780,7 +783,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         _renderer.capture((_options.gameTest+"-corner.png").c_str());_testStage=4;
     } else if(_testStage==4 && metrics.game.laps>=1) {
         [self check:metrics.game.lastLap>30 && metrics.game.nextCheckpoint==1 name:"complete_lap_with_ordered_checkpoints"];
-        [self check:metrics.game.collisions==0 name:"circuit_drivable_without_collisions"];
+        [self check:metrics.game.collisions==0 name:"keyboard_circuit_drivable_without_collisions"];
         _gameBefore=metrics;_state.testPilot=false;_state.steering=1;_gamePhaseAt=now();
         _session->command(AudioEngineRunner::Action::Brake,0);_session->command(AudioEngineRunner::Action::Throttle,.85);_state.throttle=.85;_testStage=5;
     } else if(_testStage==5 && metrics.game.collisions>_gameBefore.game.collisions) {
@@ -810,6 +813,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     const double seconds=now()-_benchAt;const uint64_t frames=metrics.frames-_benchMetrics.frames;
     std::ofstream report(_options.gameTest+".json");
     report<<std::fixed<<std::setprecision(4)<<"{\n  \"result\": \""<<(_passed ? "PASS" : "FAIL")<<"\",\n"
+        <<"  \"steering\": \"keyboard\",\n  \"keyboard_sample_hz\": 10,\n"
         <<"  \"driver\": \""<<SDL_GetCurrentAudioDriver()<<"\",\n  \"seconds\": "<<seconds
         <<",\n  \"render_fps_including_stall\": "<<frames/seconds
         <<",\n  \"cpu_mean_ms\": "<<(metrics.cpuNs-_benchMetrics.cpuNs)/1e6/std::max(uint64_t(1),frames)

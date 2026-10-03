@@ -16,7 +16,7 @@ public:
     void start();
     void stop();
     void connect(std::shared_ptr<SoundSession> session);
-    void controls(double steering,bool enabled,bool pilot);
+    void controls(double steering,bool enabled,bool pilot,bool keyboardPilot=false);
     void recover() {requests.fetch_or(1);}
     void restart() {requests.fetch_or(2);}
     DrivingSnapshot snapshot() const;
@@ -31,7 +31,7 @@ private:
     DrivingSnapshot previous{},current{};
     std::chrono::steady_clock::time_point published{};
     std::thread thread;
-    std::atomic<bool> running{false},enabled{false},pilot{false};
+    std::atomic<bool> running{false},enabled{false},pilot{false},keyboardPilot{false};
     std::atomic<double> steering{0},speedTarget{0},cpuMs{0};
     std::atomic<unsigned> requests{0};
 };

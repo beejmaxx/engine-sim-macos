@@ -38,6 +38,22 @@ DrivingCourse::Location DrivingCourse::nearest(DrivingPoint p) const {
     }
     auto location=at(s);location.lateral=drivingDot(p-location.point,location.right);return location;
 }
+DrivingHandling::Surface DrivingCourse::tyreSurface(const Location &location,double yaw) {
+    constexpr double HalfTrack=.78,HalfContact=.14;
+    const double angle=drivingAngle(yaw-heading(location.forward));
+    auto axle=[&](double offset) {
+        double grass=0;
+        for(double side:{-1.0,1.0}) {
+            const double across=offset*std::sin(angle)+side*HalfTrack*std::cos(angle);
+            const double along=offset*std::cos(angle)-side*HalfTrack*std::sin(angle);
+            const double lateral=location.lateral+across-location.curvature*along*along*.5;
+            const double t=std::clamp((std::abs(lateral)-HalfWidth+HalfContact)/(2*HalfContact),0.0,1.0);
+            grass+=t*t*(3-2*t)*.5;
+        }
+        return grass;
+    };
+    return {axle(DrivingHandling::FrontAxle),axle(-DrivingHandling::RearAxle)};
+}
 DrivingCourse::CornerAdvice DrivingCourse::cornerAdvice(double progress,double speed) const {
     CornerAdvice result;double allowable=80;
     for(double ahead=0;ahead<=250;ahead+=3) {
@@ -78,10 +94,12 @@ void DrivingGame::step(double dt,double distance,double speed,double steering,Dr
     state.time+=dt;++state.steps;state.wheelDistance+=distance;
     state.speed=speed;
     auto location=track.nearest({state.x,state.z});
-    state.offroad=std::abs(location.lateral)>DrivingCourse::HalfWidth-.6;
+    const auto surface=DrivingCourse::tyreSurface(location,state.yaw);
+    state.offroadFraction=(surface.front*DrivingHandling::RearAxle+surface.rear*DrivingHandling::FrontAxle)/DrivingHandling::Wheelbase;
+    state.offroad=state.offroadFraction>.01;
     const double previousYaw=handling.snapshot().yawRate,previousTravel=state.velocityYaw;
-    handling.advance(dt,speed,steering,input,state.offroad);
-    const auto &chassis=handling.snapshot();state.steer=chassis.steer;
+    handling.advance(dt,speed,steering,input,surface);
+    const auto &chassis=handling.snapshot();state.steer=chassis.steer;state.steeringInput=chassis.input;
     state.yaw=drivingAngle(state.yaw+(previousYaw+chassis.yawRate)*dt*.5);
     state.velocityYaw=drivingAngle(state.yaw+std::atan2(chassis.lateralSpeed,std::max(.05,speed)));
     const double travelYaw=previousTravel+drivingAngle(state.velocityYaw-previousTravel)*.5;
@@ -107,15 +125,15 @@ void DrivingGame::step(double dt,double distance,double speed,double steering,Dr
         }
     }
     impactSeconds=std::max(0.0,impactSeconds-dt);state.impact*=std::exp(-dt*3.5);
-    state.roadDeceleration=(state.offroad ? 2.4+speed*.045 : 0)+(impactSeconds>0 ? 38*std::max(.15,state.impact) : 0);
+    state.roadDeceleration=state.offroadFraction*(2.4+speed*.045)+(impactSeconds>0 ? 38*std::max(.15,state.impact) : 0);
     if(state.recovering) {
         recoverySeconds+=dt;state.roadDeceleration=45;
         if(speed<.6) {
             if(newRacePending) {state.speed=0;restart();return;}
             const double checkpoint=(state.nextCheckpoint-1)*track.length()/8+2;
             const auto spawn=track.at(checkpoint);state.x=spawn.point.x;state.z=spawn.point.z;
-            state.yaw=state.velocityYaw=heading(spawn.forward);state.steer=state.roll=state.pitch=0;
-            state.progress=previousProgress=checkpoint;state.lateral=0;state.offroad=false;state.impact=0;state.roadDeceleration=0;handling.reset();state.recovering=false;
+            state.yaw=state.velocityYaw=heading(spawn.forward);state.steer=state.steeringInput=state.roll=state.pitch=0;
+            state.progress=previousProgress=checkpoint;state.lateral=state.offroadFraction=0;state.offroad=false;state.impact=0;state.roadDeceleration=0;handling.reset();state.recovering=false;
             ++state.recoveries;state.raceSeconds+=3;lapStart-=3;
             return;
         }

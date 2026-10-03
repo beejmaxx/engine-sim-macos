@@ -4,9 +4,11 @@
 
 namespace {
 constexpr double Mass=1450, YawInertia=1900, WheelLock=.55;
-// Cornering stiffness per unit axle load. A little front understeer makes
-// countersteering and lift-off stable without inventing a lagging travel angle.
-constexpr double FrontStiffness=22, RearStiffness=28, AssistedG=.92;
+// Responsive road tyres with modest front understeer. The previous soft tune
+// stored too much sideslip: releasing a key kept turning the car for 600 ms
+// at 100 mph, followed by an uncommanded yaw reversal. Grip is still bounded
+// independently of stiffness; the maximum tyre force remains unchanged.
+constexpr double FrontStiffness=65, RearStiffness=80, AssistedG=.92;
 double approach(double value,double target,double amount) {
     return value+std::clamp(target-value,-amount,amount);
 }
@@ -14,24 +16,30 @@ double approach(double value,double target,double amount) {
 double DrivingHandling::maximumCurvature(double speed) {
     return std::min(std::tan(WheelLock)/Wheelbase,AssistedG*Gravity/std::max(4.0,speed*speed));
 }
-void DrivingHandling::advance(double dt,double speed,double steering,Input input,bool offroad) {
+void DrivingHandling::advance(double dt,double speed,double steering,Input input,Surface surface) {
     if(!std::isfinite(dt) || !std::isfinite(speed) || !std::isfinite(steering) || dt<=0)return;
+    if(!std::isfinite(surface.front) || !std::isfinite(surface.rear))return;
     dt=std::min(dt,.1);speed=std::max(0.0,speed);steering=std::clamp(steering,-1.0,1.0);
+    surface.front=std::clamp(surface.front,0.0,1.0);surface.rear=std::clamp(surface.rear,0.0,1.0);
     const int parts=std::max(1,int(std::ceil(dt*240)));
-    for(int i=0;i<parts;++i)step(dt/parts,speed,steering,input,offroad);
+    for(int i=0;i<parts;++i)step(dt/parts,speed,steering,input,surface);
 }
-void DrivingHandling::step(double dt,double speed,double steering,Input input,bool offroad) {
+void DrivingHandling::step(double dt,double speed,double steering,Input input,Surface surface) {
     if(input==Input::Keyboard) {
         // A tap makes a correction; a sustained press builds a corner. Release
         // and reversal have priority over the slower build toward full lock.
-        const double rate=steering==0 || steering*state.input<0 ? 10 : 3;
+        const double rate=steering==0 || steering*state.input<0 ? 10 : 5.5;
         state.input=approach(state.input,steering,dt*rate);
     } else state.input=steering;
-    const double grip=offroad ? DirtGrip : RoadGrip;
-    const double curve=state.input*maximumCurvature(speed)*(offroad ? .45 : 1);
+    // More precision around centre, while a hold reaches full steering sooner.
+    const double demand=input==Input::Keyboard ? state.input*std::sqrt(std::abs(state.input)) : state.input;
+    const double frontGrip=RoadGrip+(DirtGrip-RoadGrip)*surface.front;
+    const double rearGrip=RoadGrip+(DirtGrip-RoadGrip)*surface.rear;
+    const double curve=demand*maximumCurvature(speed)*std::min(frontGrip,rearGrip)/RoadGrip;
     const double requestedG=curve*speed*speed/Gravity;
-    const double slip=grip*std::atanh(std::clamp(requestedG/grip,-.9,.9));
-    const double target=std::clamp(std::atan(Wheelbase*curve)+slip*(1/FrontStiffness-1/RearStiffness),-WheelLock,WheelLock);
+    const double frontSlipTarget=frontGrip/FrontStiffness*std::atanh(std::clamp(requestedG/frontGrip,-.9,.9));
+    const double rearSlipTarget=rearGrip/RearStiffness*std::atanh(std::clamp(requestedG/rearGrip,-.9,.9));
+    const double target=std::clamp(std::atan(Wheelbase*curve)+frontSlipTarget-rearSlipTarget,-WheelLock,WheelLock);
     state.steer+=(target-state.steer)*(1-std::exp(-dt*26));
 
     const double beta=std::atan(RearAxle/Wheelbase*std::tan(state.steer));
@@ -50,8 +58,8 @@ void DrivingHandling::step(double dt,double speed,double steering,Input input,bo
     const double frontLoad=Mass*Gravity*RearAxle/Wheelbase,rearLoad=Mass*Gravity*FrontAxle/Wheelbase;
     const double frontSlip=state.steer-std::atan2(state.lateralSpeed+FrontAxle*state.yawRate,forwardSpeed);
     const double rearSlip=-std::atan2(state.lateralSpeed-RearAxle*state.yawRate,forwardSpeed);
-    const double frontForce=grip*frontLoad*std::tanh(FrontStiffness*frontSlip/grip)*std::cos(state.steer);
-    const double rearForce=grip*rearLoad*std::tanh(RearStiffness*rearSlip/grip);
+    const double frontForce=frontGrip*frontLoad*std::tanh(FrontStiffness*frontSlip/frontGrip)*std::cos(state.steer);
+    const double rearForce=rearGrip*rearLoad*std::tanh(RearStiffness*rearSlip/rearGrip);
     const double acceleration=(frontForce+rearForce)/Mass;
     state.lateralSpeed+=(acceleration-speed*state.yawRate)*dt;
     state.yawRate+=(FrontAxle*frontForce-RearAxle*rearForce)/YawInertia*dt;

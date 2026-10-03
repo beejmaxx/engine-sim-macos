@@ -82,7 +82,7 @@ struct State {
     float highFrequency=0, lowNoise=0, dynoRpm=1000, clutch=0;
     bool dyno=false, revHeld=false, drive=false, brakeHeld=false, roadView=false;
     float steering=0;
-    bool testPilot=false;
+    bool testPilot=false,testKeyboard=false;
     Control hover = None, focus = None, pressed = None;
     bool ready = false, loading = true, ignitionRequested = false, muted = false;
     bool effects = true, uncapped = false, silent = false, active = true, automated = false;

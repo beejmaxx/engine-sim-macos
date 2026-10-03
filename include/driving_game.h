@@ -25,6 +25,7 @@ public:
     DrivingCourse();
     Location at(double distance) const;
     Location nearest(DrivingPoint p) const;
+    static DrivingHandling::Surface tyreSurface(const Location &location,double yaw);
     CornerAdvice cornerAdvice(double progress,double speed) const;
     double length() const {return lengths.back();}
     const std::array<DrivingPoint,Segments+1> &points() const {return path;}
@@ -35,7 +36,7 @@ private:
 
 struct DrivingSnapshot {
     double time=0,x=0,z=0,yaw=0,velocityYaw=0,speed=0,wheelDistance=0;
-    double steer=0,roll=0,pitch=0,lateralG=0,progress=0,lateral=0;
+    double steer=0,steeringInput=0,roll=0,pitch=0,lateralG=0,progress=0,lateral=0,offroadFraction=0;
     double lapSeconds=0,lastLap=0,bestLap=0,raceSeconds=0,roadDeceleration=0,impact=0;
     double cornerSpeed=80,cornerDistance=0,cornerDeceleration=0;
     int cornerDirection=0;

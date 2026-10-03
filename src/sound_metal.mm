@@ -400,7 +400,7 @@ public:
         button(Idle,"IDLE [I]",s);button(Mute,s.muted ? "UNMUTE" : "MUTE [M]",s,s.muted);
         button(RecoverCar,"RECOVER [C]",s);button(RestartRace,"NEW RUN [BKSP]",s);
         if(game.offroad)text("OFF ROAD / LOW GRIP",24,605,0,Yellow);
-        line(398,668,506,668,2,color(Ink,.25f));circle(452+float(game.steer)*85,668,5,color(Blue));text("STEERING",399,633,0,0xD1DDE4);
+        line(398,668,506,668,2,color(Ink,.25f));circle(452+float(game.steeringInput)*54,668,5,color(Blue));text("STEERING",399,633,0,0xD1DDE4);
     }
     void draw(const State &s,const EngineVisualLayout &layout,const EngineVisualSnapshot &v,
             double dt,float fps,float cpuMs,float gpuMs,float displayedRpm) {
@@ -854,7 +854,7 @@ void SoundMetalRenderer::stop() {
     m_impl->session.reset();
 }
 void SoundMetalRenderer::update(const State &state) {
-    m_impl->game.controls(state.steering,state.roadView && state.ready,state.testPilot);
+    m_impl->game.controls(state.steering,state.roadView && state.ready,state.testPilot,state.testKeyboard);
     std::lock_guard<std::mutex> lock(m_impl->stateMutex);m_impl->state=state;
 }
 void SoundMetalRenderer::recoverCar() {m_impl->game.recover();}

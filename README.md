@@ -34,7 +34,9 @@ focuses on responsive sound and a native Mac interface.
   The sun stays in the world, moving across the view as the car turns.
 - Progressive keyboard steering with front/rear tyre forces and chassis yaw
   inertia. Quick taps make small corrections at speed; sustained presses build
-  a turn. Corner-speed and braking cues help judge when to slow down.
+  a turn, with prompt release and countersteering. Grip and resistance change
+  gradually as individual tyres cross the shoulder. Corner-speed and braking
+  cues help judge when to slow down.
 - Audio production runs independently of the UI. The renderer consumes bounded
   snapshots; a slow or hidden window does not have to delay sound production.
 - Native Metal rendering, display-synchronized by default, with optional glow
@@ -130,8 +132,9 @@ Press **V** to enter the game, or launch with `--road`. Drive the forest circuit
 pass all eight checkpoints in order, and complete three laps. Brake before tight
 corners: grip is limited, and leaving the asphalt increases resistance. Recovery
 adds a three-second penalty and returns you to the last passed checkpoint. The
-same generic concept-car body is used for every engine; handling is an approximate
-game model. Car and scenery credits are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+GT3 preset uses the Porsche body; other presets use the concept car. Handling
+is an approximate game model. Car and scenery credits are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 For the terminal interface without graphics, run `./run-sound.sh`. For the
 line-oriented audio host, run `./run-audio.sh --help`.

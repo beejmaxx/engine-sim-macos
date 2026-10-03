@@ -70,6 +70,13 @@ and rear tyre forces then accelerate lateral velocity and chassis yaw inertia.
 There is no artificial travel-heading filter. Parking speeds blend into bicycle
 geometry; integration is bounded at 240 Hz on the game worker. Full sustained
 input requests about 0.92 g at speed; road grip is capped at 1.12 g, dirt at 0.48 g.
+The road tyre tune reduces residual cornering after release and avoids a large
+uncommanded yaw reversal. A nonlinear keyboard ramp gives precision near centre
+and reaches full input in about 180 ms; release centres it in 100 ms. The HUD's
+steering marker displays normalized input, independent of speed-sensitive wheel
+lock. Each axle's grip blends according to its two tyre contact patches on the
+shoulder, including car orientation. Road resistance scales with the off-road
+fraction. Touching the grass no longer puts all four tyres on dirt at once.
 The HUD looks 250 metres ahead for curvature and shows a suggested corner speed,
 distance, and a braking cue with reaction distance. Guidance never applies the
 pedals or steering for normal play.
@@ -166,14 +173,18 @@ For a complete programmatic circuit/impact/recovery and audio check:
   --log "$PWD/build/audio-validation/gt3-game-playback.log"
 ```
 
-This uses a test-only steering pilot and timed pedal commands. It completes a
+This uses a test-only driver issuing discrete left/released/right inputs at
+10 Hz through the normal keyboard ramp, alongside timed pedal commands. The
+renderer benchmark retains its analogue pilot. The game test completes a
 lap, deliberately drives into a barrier, recovers and drives again. It separately
 stalls AppKit and the renderer for 1.2 seconds each, checks that game physics and
 PCM continue, and writes JSON, logs and Metal PNGs. A test-only software-mixer
 observer checks missing, silent, nonfinite and clipped output without changing
 PCM. Add `--offscreen --silent` for hidden dummy audio. Portable game tests cover
-three-lap finish detection, grip limits, barrier containment, recovery, invalid
-inputs, no-motion data and resistance forces. Native tests cover steering/pedal
+three-lap finish detection, a keyboard circuit with acceleration/braking,
+high-speed tap/release/countersteer response, partial-shoulder grip, barrier
+containment, recovery, invalid inputs, no-motion data and resistance forces.
+Native tests cover steering/pedal
 holds, releases, focus changes and engine switching.
 
 For an audio-only acceleration/shift/braking test, including PCM and driving
@@ -258,6 +269,21 @@ or clipped PCM. Forced UI/render stalls still preserved physics and audio.
 The seven-engine native input suite and all **66 portable / 73 packaged tests**
 passed. Models preload into GPU memory before audio starts; the callback and
 audio sample reserve are unchanged.
+
+With the firmer road tyre tune, the 100 mph keyboard release test settled
+below 0.1 g in **304 ms**, down from **592 ms**; countersteering reached the
+opposite 0.7 g in **400 ms**, down from **625 ms**. The short-tap checks still
+limit a 100 ms press to less than one degree of heading change. The portable
+keyboard driver completed the circuit above 80 mph without touching the shoulder.
+All **71 portable / 78 packaged tests** passed. A **103.50-second CoreAudio
+keyboard game check** completed a clean 96.76-second lap, deliberate impact,
+recovery and acceleration with zero missing, silent or clipped PCM and no Metal
+errors. Both forced UI/render stalls preserved physics and audio. The separate
+20-second onscreen run at 2560 x 1600 sustained **60.00 FPS**, **0.63 ms CPU /
+4.44 ms GPU**, with zero missing frames and 72 rendered frames during the UI
+stall. The audio-only control check passed with **35.86 ms maximum
+command-to-mixer response**, zero missing/clipped/unexpected silent output,
+and the existing audio sample reserve.
 The separate real-output audio/control check passed with zero missing, clipped
 or unexpected silent samples and **34.0 ms maximum command-to-mixer response**.
 
