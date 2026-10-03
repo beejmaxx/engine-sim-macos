@@ -39,10 +39,11 @@ struct DrivingSnapshot {
     double steer=0,steeringInput=0,roll=0,pitch=0,lateralG=0,progress=0,lateral=0,offroadFraction=0;
     double lapSeconds=0,lastLap=0,bestLap=0,raceSeconds=0,roadDeceleration=0,impact=0;
     double cornerSpeed=80,cornerDistance=0,cornerDeceleration=0;
+    double driftAngle=0,driftScore=0,totalDriftScore=0,bestDriftScore=0,lastDriftScore=0,driftEndedAt=0;
     int cornerDirection=0;
     unsigned laps=0,nextCheckpoint=1,collisions=0,recoveries=0;
     uint64_t steps=0;
-    bool offroad=false,wrongWay=false,started=false,finished=false,recovering=false;
+    bool offroad=false,wrongWay=false,started=false,finished=false,recovering=false,reversing=false;
 };
 
 class DrivingGame {
@@ -53,15 +54,16 @@ public:
     void restart();
     void recover();
     // dt and distance come from the engine's clock/vehicle travel, not frames.
-    void advance(double dt,double distance,double speed,double steering,DrivingHandling::Input input=DrivingHandling::Input::Analog);
+    void advance(double dt,double distance,double speed,double steering,DrivingHandling::Input input=DrivingHandling::Input::Analog,bool drift=false);
     double pilotSteering() const;
     double pilotSpeed() const;
 private:
-    void step(double dt,double distance,double speed,double steering,DrivingHandling::Input input,double acceleration);
+    void step(double dt,double distance,double speed,double steering,DrivingHandling::Input input,double acceleration,bool drift);
     DrivingCourse track;
     DrivingHandling handling;
     DrivingSnapshot state{};
     double lapStart=0,previousProgress=0,impactSeconds=0,recoverySeconds=0;
+    double motionYaw=0;
     bool newRacePending=false;
 };
 #endif

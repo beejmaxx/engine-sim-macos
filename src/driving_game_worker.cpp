@@ -11,8 +11,8 @@ void DrivingGameWorker::stop() {running=false;if(thread.joinable())thread.join()
 void DrivingGameWorker::connect(std::shared_ptr<SoundSession> value) {
     std::lock_guard<std::mutex> lock(sessionMutex);session=std::move(value);++generation;
 }
-void DrivingGameWorker::controls(double value,bool active,bool testPilot,bool keyboardTest) {
-    steering=std::isfinite(value) ? std::clamp(value,-1.0,1.0) : 0;enabled=active;pilot=testPilot;keyboardPilot=keyboardTest;
+void DrivingGameWorker::controls(double value,bool active,bool testPilot,bool keyboardTest,bool drifting) {
+    steering=std::isfinite(value) ? std::clamp(value,-1.0,1.0) : 0;enabled=active;pilot=testPilot;keyboardPilot=keyboardTest;drift=drifting;
 }
 DrivingSnapshot DrivingGameWorker::snapshot() const {std::lock_guard<std::mutex> lock(poseMutex);return current;}
 DrivingSnapshot DrivingGameWorker::presented() const {
@@ -21,7 +21,7 @@ DrivingSnapshot DrivingGameWorker::presented() const {
     const double f=std::clamp(std::chrono::duration<double>(std::chrono::steady_clock::now()-stamp).count()/std::max(.001,b.time-a.time),0.0,1.0);
     auto interpolate=[&](double DrivingSnapshot::*field) {b.*field=a.*field+(b.*field-a.*field)*f;};
     for(auto field:{&DrivingSnapshot::x,&DrivingSnapshot::z,&DrivingSnapshot::speed,&DrivingSnapshot::wheelDistance,
-            &DrivingSnapshot::steer,&DrivingSnapshot::steeringInput,&DrivingSnapshot::roll,&DrivingSnapshot::pitch})interpolate(field);
+            &DrivingSnapshot::steer,&DrivingSnapshot::steeringInput,&DrivingSnapshot::roll,&DrivingSnapshot::pitch,&DrivingSnapshot::driftAngle})interpolate(field);
     b.yaw=drivingAngle(a.yaw+drivingAngle(b.yaw-a.yaw)*f);
     b.velocityYaw=drivingAngle(a.velocityYaw+drivingAngle(b.velocityYaw-a.velocityYaw)*f);
     return b;
@@ -56,7 +56,7 @@ void DrivingGameWorker::run() {
                 }
                 const double input=automatic ? (keys ? keyboardInput : game.pilotSteering()) : steering.load();
                 game.advance(next.time-last.time,next.distance-last.distance,next.speed,input,
-                    automatic && !keys ? DrivingHandling::Input::Analog : DrivingHandling::Input::Keyboard);
+                    automatic && !keys ? DrivingHandling::Input::Analog : DrivingHandling::Input::Keyboard,drift);
             }
             audio->setRoadDeceleration(enabled ? game.snapshot().roadDeceleration : 0);
             last=next;speedTarget=pilot ? game.pilotSpeed() : 0;

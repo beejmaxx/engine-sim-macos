@@ -49,7 +49,7 @@ bool AudioEngineRunner::start(Simulator &simulator, double reserveSeconds, bool 
     m_exhaustMix = simulator.synthesizer().getAudioParameters().convolution;
     m_roughness = simulator.synthesizer().getAudioParameters().inputSampleNoise;
     m_ignition = false; m_cranking = false; m_blipping = false;
-    m_drive = false; m_shifting = false; m_gear = -1;
+    m_drive = false; m_shifting = false; m_backPedal=false; m_gear = -1;
     m_vehicleSpeed = 0; m_clutch = 0; m_brake = 0; m_appliedThrottle = 0;
     m_vehicleSequence=0;m_vehicleTime=0;m_vehicleDistance=0;m_gameSpeed=0;
     m_roadDeceleration=0;m_roadLoadUntil=0;
@@ -73,7 +73,7 @@ AudioEngineRunner::Snapshot AudioEngineRunner::snapshot() const {
         m_throttle.load(), m_volume.load(), m_exhaustMix.load(), m_roughness.load(),
         m_ignition.load(), m_cranking.load(), m_blipping.load(),
         m_vehicleSpeed.load(), m_clutch.load(), m_brake.load(), m_appliedThrottle.load(),
-        m_gear.load(), m_drive.load(), m_shifting.load()};
+        m_gear.load(), m_drive.load(), m_shifting.load(),m_backPedal.load()};
 }
 
 bool AudioEngineRunner::vehicleTelemetry(VehicleTelemetry &value) const {
@@ -117,6 +117,7 @@ void AudioEngineRunner::run() {
     auto &vehicle = *sim.getVehicle();
     AutomaticTransmission automatic;
     double brake = 0;
+    bool backPedal=false;
     double starterSeconds = 0, simulatedSeconds = 0, starterThrottle = 0;
     double throttle = 0, blipSeconds = 0, blipThrottle = 0;
     const double initialCpu = threadCpuSeconds();
@@ -162,6 +163,7 @@ void AudioEngineRunner::run() {
                 if (automatic.enabled()) sim.m_dyno.m_enabled = false;
                 break;
             case Action::Brake: brake = std::clamp(command.value, 0.0, 1.0);break;
+            case Action::BackPedal: backPedal=command.value>0;break;
             case Action::Dyno:
                 if (command.value > 0 && automatic.enabled()) automatic.setEnabled(false, transmission);
                 sim.m_dyno.m_enabled=command.value>0;break;
@@ -212,7 +214,7 @@ void AudioEngineRunner::run() {
         vehicle.setRoadDeceleration(simulatedSeconds<m_roadLoadUntil.load() ? m_roadDeceleration.load() : 0);
         const double requested = std::max(brake > 0 ? 0 : throttle,
             std::max(starterSeconds > 0 ? starterThrottle : 0, brake == 0 && blipSeconds > 0 ? blipThrottle : 0));
-        const double applied = automatic.update(transmission, engine, vehicle, requested, starterSeconds > 0, 0.005);
+        const double applied = automatic.update(transmission, engine, vehicle, requested, starterSeconds > 0, 0.005,backPedal);
         engine.setSpeedControl(applied);
         sim.startFrame(0.005);
         while (sim.simulateStep()) { }
@@ -236,11 +238,11 @@ void AudioEngineRunner::run() {
         m_ignition = engine.getIgnitionModule()->m_enabled;
         m_cranking = starterSeconds > 0; m_blipping = blipSeconds > 0;
         m_vehicleSpeed = vehicle.getSpeed(); m_clutch = transmission.getClutchPressure();
-        m_brake = brake; m_appliedThrottle = applied; m_gear = transmission.getGear();
+        m_brake = vehicle.getBrake(); m_backPedal=backPedal; m_appliedThrottle = applied; m_gear = transmission.getGear();
         m_drive = automatic.enabled(); m_shifting = automatic.shifting();
         m_simulatedSeconds = simulatedSeconds;
         ++m_vehicleSequence;
-        m_vehicleTime=simulatedSeconds;m_vehicleDistance=vehicle.getTravelledDistance();m_gameSpeed=vehicle.getSpeed();
+        m_vehicleTime=simulatedSeconds;m_vehicleDistance=vehicle.getSignedTravelledDistance();m_gameSpeed=vehicle.getSignedSpeed();
         ++m_vehicleSequence;
     }
 }

@@ -13,12 +13,13 @@ public:
     bool enabled() const { return m_enabled; }
     bool shifting() const { return m_shiftElapsed >= 0; }
     double update(Transmission &transmission, const Engine &engine,
-        const Vehicle &vehicle, double throttle, bool cranking, double dt);
+        Vehicle &vehicle, double throttle, bool cranking, double dt, bool backPedal=false);
 
 private:
     bool m_enabled = false, m_changedGear = false;
     int m_nextGear = 0;
     double m_clutch = 0, m_shiftElapsed = -1, m_cooldown = 0;
+    double m_directionHold = 0;
 };
 
 #endif

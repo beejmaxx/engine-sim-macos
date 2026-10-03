@@ -7,6 +7,7 @@
 
 class Transmission {
     public:
+        static constexpr int Reverse = -2, Neutral = -1;
         struct Parameters {
             int GearCount;
             const double *GearRatios;
@@ -28,6 +29,9 @@ class Transmission {
         inline int getGear() const { return m_gear; }
         inline int getGearCount() const { return m_gearCount; }
         inline double getGearRatio(int gear) const {
+            // Scripts specify forward gears. Reverse uses the first ratio's
+            // magnitude; its sign specifies travel, not crankshaft rotation.
+            if (gear == Reverse && m_gearCount > 0) return -m_gearRatios[0];
             return gear >= 0 && gear < m_gearCount ? m_gearRatios[gear] : 0;
         }
         inline void setClutchPressure(double pressure) { m_clutchPressure = pressure; }

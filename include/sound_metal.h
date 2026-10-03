@@ -9,7 +9,7 @@
 namespace sound_ui {
 constexpr float Width = 1280, Height = 800;
 enum Control { None = -1, Supra, Ls, Start, Rev, Idle, Throttle, Volume, Exhaust,
-    Roughness, Mute, Reset, Effects, Uncapped, Library, HighFrequency, LowNoise, Dyno, DynoSpeed, Clutch, GearDown, GearUp, LayerBack, LayerNext, Drive, Brake, RoadView, RecoverCar, RestartRace, ControlCount };
+    Roughness, Mute, Reset, Effects, Uncapped, Library, HighFrequency, LowNoise, Dyno, DynoSpeed, Clutch, GearDown, GearUp, LayerBack, LayerNext, Drive, Brake, RoadView, RecoverCar, RestartRace, Drift, ControlCount };
 struct UiRect {
     float x, y, w, h;
     bool contains(float px, float py) const { return px >= x && py >= y && px < x+w && py < y+h; }
@@ -21,14 +21,14 @@ inline UiRect bounds(Control control,bool roadView=false) {
         case Library:return {992,24,136,32};
         case RoadView:return {1140,24,116,32};
         case Drive:return {24,691,132,32};
-        case Start:return {24,741,125,35};
-        case Rev:return {161,741,98,35};
-        case Brake:return {271,741,98,35};
-        case Idle:return {381,741,84,35};
-        case Mute:return {477,741,84,35};
+        case Start:return {24,741,116,35};
+        case Rev:return {150,741,90,35};
+        case Brake:return {250,741,100,35};
+        case Drift:return {360,741,140,35};
+        case Mute:return {510,741,84,35};
         case Throttle:return {24,651,340,25};
-        case RecoverCar:return {573,741,112,35};
-        case RestartRace:return {697,741,139,35};
+        case RecoverCar:return {604,741,108,35};
+        case RestartRace:return {722,741,150,35};
         default:return {};
         }
     }
@@ -80,7 +80,7 @@ struct State {
     enum class CarBody { Concept, PorscheGt3 };
     CarBody carBody=CarBody::Concept;
     float highFrequency=0, lowNoise=0, dynoRpm=1000, clutch=0;
-    bool dyno=false, revHeld=false, drive=false, brakeHeld=false, roadView=false;
+    bool dyno=false, revHeld=false, drive=false, brakeHeld=false, roadView=false,driftHeld=false;
     float steering=0;
     bool testPilot=false,testKeyboard=false;
     Control hover = None, focus = None, pressed = None;

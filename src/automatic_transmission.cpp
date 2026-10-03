@@ -13,15 +13,43 @@ void AutomaticTransmission::setEnabled(bool enabled, Transmission &transmission)
     m_shiftElapsed = -1;
     m_cooldown = 0.5;
     m_changedGear = false;
+    m_directionHold = 0;
     transmission.setClutchPressure(0);
     transmission.changeGear(m_enabled ? 0 : -1);
 }
 
 double AutomaticTransmission::update(Transmission &transmission, const Engine &engine,
-    const Vehicle &vehicle, double throttle, bool cranking, double dt) {
-    if (!m_enabled) return throttle;
+    Vehicle &vehicle, double throttle, bool cranking, double dt, bool backPedal) {
+    if (!m_enabled) {
+        if(backPedal)vehicle.setBrake(1);
+        return vehicle.getBrake()>0 ? 0 : throttle;
+    }
     if (!std::isfinite(dt) || dt <= 0) return throttle;
     dt = std::min(dt, 0.05);
+    if(transmission.getGear()==Transmission::Neutral)
+        transmission.changeGear(vehicle.getTravelDirection()<0 ? Transmission::Reverse : 0);
+    const bool explicitBrake=vehicle.getBrake()>.01;
+    const bool forwardPedal=throttle>.01;
+    bool reverse=transmission.getGear()==Transmission::Reverse;
+    const bool wantsOpposite=reverse ? forwardPedal && !backPedal : backPedal && !forwardPedal;
+    if(wantsOpposite) {
+        vehicle.setBrake(1);
+        if(vehicle.getSpeed()<.15 && !explicitBrake && !cranking && engine.getIgnitionModule()->m_enabled && engine.getRpm()>400) m_directionHold+=dt;
+        else m_directionHold=0;
+        if(m_directionHold>=.18) {
+            transmission.setClutchPressure(0);
+            transmission.changeGear(reverse ? 0 : Transmission::Reverse);
+            reverse=transmission.getGear()==Transmission::Reverse;
+            m_clutch=0;m_shiftElapsed=-1;m_cooldown=.5;m_directionHold=0;
+            vehicle.setBrake(0);
+        } else throttle=0;
+    } else m_directionHold=0;
+    if(reverse) {
+        throttle=backPedal && !forwardPedal ? .6*std::clamp((7.0-vehicle.getSpeed())/1.5,0.0,1.0) : 0;
+        // Backing out should stay manageable even on a powerful engine.
+        vehicle.setBrake(std::max(vehicle.getBrake(),std::clamp((vehicle.getSpeed()-7.0)*.2,0.0,.5)));
+    }
+    if(backPedal && forwardPedal)vehicle.setBrake(1);
     const bool braking=vehicle.getBrake()>.01;
     if(braking)throttle=0;
     const double rpm = std::max(0.0, engine.getRpm());
@@ -53,7 +81,7 @@ double AutomaticTransmission::update(Transmission &transmission, const Engine &e
             m_changedGear = true;
         }
         double engagement = std::clamp((m_shiftElapsed - 0.09) / 0.22, 0.0, 1.0);
-        const double coupledRpm=wheelRpm*transmission.getGearRatio(transmission.getGear());
+        const double coupledRpm=wheelRpm*std::abs(transmission.getGearRatio(transmission.getGear()));
         // Braking can pass through the idle-speed boundary during a shift.
         // Do not reconnect an idling engine to wheels almost at a standstill.
         if(rpm<700 || (throttle<.01 && coupledRpm<launchRpm*.9))engagement=0;
@@ -68,11 +96,11 @@ double AutomaticTransmission::update(Transmission &transmission, const Engine &e
     }
 
     const int gear = transmission.getGear();
-    const double coupledRpm = wheelRpm * transmission.getGearRatio(gear);
+    const double coupledRpm = wheelRpm * std::abs(transmission.getGearRatio(gear));
     const double upshiftRpm = limit * (braking ? .98 : 0.48 + 0.44 * throttle);
     const double downshiftRpm = limit * (braking ? .55 : throttle > 0.75 ? 0.43 : 0.24);
     int next = gear;
-    if (m_cooldown == 0 && coupledRpm > 900) {
+    if (gear>=0 && m_cooldown == 0 && coupledRpm > 900) {
         if (!braking && rpm >= upshiftRpm && gear + 1 < transmission.getGearCount()) next = gear + 1;
         else if (gear > 0 && (braking ? coupledRpm : rpm) < downshiftRpm &&
             wheelRpm * transmission.getGearRatio(gear - 1) < upshiftRpm * 0.85) next = gear - 1;

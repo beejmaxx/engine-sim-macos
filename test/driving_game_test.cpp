@@ -239,6 +239,50 @@ TEST(DrivingCamera, SunRotatesWithViewAndDisappearsBehindCamera) {
     pose.yaw=3.141592653589793;back.update(pose,1./60);
     EXPECT_FALSE(back.sun(1280,800).visible);
 }
+TEST(DrivingGame, ReverseUsesSignedEngineTravelAndOppositeSteering) {
+    DrivingGame game;const auto start=game.snapshot();
+    for(int i=0;i<120;++i)game.advance(1./120,-5./120,-5,0);
+    auto p=game.snapshot();EXPECT_TRUE(p.reversing);EXPECT_LT(p.z,start.z-4.9);
+    EXPECT_NEAR(p.wheelDistance,-5,1e-8);EXPECT_TRUE(p.wrongWay);EXPECT_EQ(p.laps,0);
+    for(int i=0;i<30;++i)game.advance(1./120,-5./120,-5,1);
+    EXPECT_LT(drivingAngle(game.snapshot().yaw-start.yaw),-.1);
+    game.recover();game.advance(.01,-.02,-2,0);EXPECT_TRUE(game.snapshot().recovering);
+    game.advance(.01,0,-0.0,0);EXPECT_FALSE(game.snapshot().recovering);
+}
+TEST(DrivingHandling, DriftIsBoundedAndReleaseRestoresGripWithoutSpin) {
+    DrivingHandling chassis;
+    for(int i=0;i<240;++i)chassis.advance(1./240,25,.7,DrivingHandling::Input::Analog,{},true);
+    EXPECT_LT(chassis.snapshot().driftAngle,-.35);EXPECT_GT(chassis.snapshot().driftAngle,-.59);
+    EXPECT_LT(chassis.snapshot().lateralSpeed,-8);
+    for(int i=0;i<120;++i) {
+        chassis.advance(1./240,25,0,DrivingHandling::Input::Analog,{},false);
+        EXPECT_GE(chassis.snapshot().yawRate,0);
+    }
+    EXPECT_LT(std::abs(chassis.snapshot().driftAngle),.005);EXPECT_LT(std::abs(chassis.snapshot().yawRate),.001);
+    for(double speed:{0.,-10.,4.}) {
+        chassis.reset();for(int i=0;i<240;++i)chassis.advance(1./240,speed,1,DrivingHandling::Input::Analog,{},true);
+        EXPECT_EQ(chassis.snapshot().driftAngle,0);
+    }
+}
+TEST(DrivingGame, DriftScoresMovingSlidesAndBanksOnRelease) {
+    DrivingGame game;
+    for(int i=0;i<84;++i)game.advance(1./120,20./120,20,.45,DrivingHandling::Input::Analog,true);
+    EXPECT_GT(game.snapshot().driftScore,10);EXPECT_LT(game.snapshot().driftAngle,-.2);
+    EXPECT_NEAR(drivingAngle(game.snapshot().yaw+game.snapshot().driftAngle-game.snapshot().velocityYaw),0,1e-8);
+    for(int i=0;i<120;++i)game.advance(1./120,20./120,20,0,DrivingHandling::Input::Analog,false);
+    EXPECT_EQ(game.snapshot().driftScore,0);EXPECT_GT(game.snapshot().totalDriftScore,10);
+    EXPECT_GT(game.snapshot().bestDriftScore,10);
+    DrivingGame parked;
+    for(int i=0;i<240;++i)parked.advance(1./120,0,0,1,DrivingHandling::Input::Keyboard,true);
+    EXPECT_EQ(parked.snapshot().driftScore,0);EXPECT_EQ(parked.snapshot().totalDriftScore,0);
+}
+TEST(DrivingCamera, ReverseLooksBackAndDriftDoesNotWhipCameraSideways) {
+    DrivingCamera normal,slide,reverse;DrivingSnapshot p;
+    normal.update(p,.016);p.yaw=.5;p.driftAngle=-.5;slide.update(p,.016);
+    EXPECT_NEAR(normal.forward.x,slide.forward.x,1e-8);EXPECT_NEAR(normal.forward.z,slide.forward.z,1e-8);
+    p.yaw=p.driftAngle=0;p.reversing=true;reverse.update(p,.016);
+    EXPECT_GT(reverse.position.z,p.z+8);EXPECT_LT(reverse.forward.z,-.95);
+}
 TEST(DrivingCamera, TravelDoesNotMoveDistantSunOrChangeChaseDistance) {
     DrivingCamera camera;DrivingSnapshot pose;camera.update(pose,1./60);
     const auto a=camera.sun(1280,800);

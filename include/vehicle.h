@@ -31,8 +31,12 @@ class Vehicle {
         inline double getDiffRatio() const { return m_diffRatio; }
         inline double getTireRadius() const { return m_tireRadius; }
         double getSpeed() const;
+        double getSignedSpeed() const { return m_travelDirection * getSpeed(); }
+        int getTravelDirection() const { return m_travelDirection; }
+        void setTravelDirection(int direction) { m_travelDirection = direction < 0 ? -1 : 1; }
         inline double getTravelledDistance() const { return m_travelledDistance; }
-        inline void resetTravelledDistance() { m_travelledDistance = 0; }
+        double getSignedTravelledDistance() const { return m_signedTravelledDistance; }
+        inline void resetTravelledDistance() { m_travelledDistance = m_signedTravelledDistance = 0; }
         double linearForceToVirtualTorque(double force) const;
         void setBrake(double pressure);
         double getBrake() const { return m_brake; }
@@ -48,6 +52,8 @@ class Vehicle {
         double m_diffRatio;
         double m_tireRadius;
         double m_travelledDistance;
+        double m_signedTravelledDistance = 0;
+        int m_travelDirection = 1;
         double m_rollingResistance;
         double m_brake = 0;
         double m_roadDeceleration = 0;

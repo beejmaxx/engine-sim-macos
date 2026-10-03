@@ -385,11 +385,11 @@ public:
             line(cx+(radius-12)*std::cos(a),cy+(radius-12)*std::sin(a),cx+(radius-4)*std::cos(a),cy+(radius-4)*std::sin(a),1.5,color(Ink,.85f));
             std::snprintf(label,sizeof(label),"%d",i);centered(label,cx+(radius-25)*std::cos(a),cy+(radius-25)*std::sin(a)-7,0);
         }
-        std::snprintf(label,sizeof(label),"%.0f",float(std::max(0.0,game.speed/.44704)));centered(label,cx,623,4);
+        std::snprintf(label,sizeof(label),"%.0f",float(std::abs(game.speed/.44704)));centered(label,cx,623,4);
         centered("MPH",cx,696,1,0xD1DDE4);
         std::snprintf(label,sizeof(label),"%.0f RPM",std::max(0.f,rpm));centered(label,cx,761,1);
         text("GEAR",936,684,0,0xD1DDE4);
-        if(v.gear<0)std::snprintf(label,sizeof(label),"N");else std::snprintf(label,sizeof(label),"%d",v.gear+1);
+        if(v.gear==-2)std::snprintf(label,sizeof(label),"R");else if(v.gear<0)std::snprintf(label,sizeof(label),"N");else std::snprintf(label,sizeof(label),"%d",v.gear+1);
         centered(label,956,702,3,s.engine.shifting ? Yellow : Ink);
         centered(s.engine.drive ? "AUTO" : "MANUAL",956,747,0,0xD1DDE4);
         text("THROTTLE",24,633,0,0xD1DDE4);
@@ -397,12 +397,22 @@ public:
         line(x,y,x+w,y,3,color(Ink,.2f));line(x,y,x+w*std::sqrt(std::clamp(s.throttle,0.f,1.f)),y,3,color(Ink));
         circle(x+w*std::sqrt(std::clamp(s.throttle,0.f,1.f)),y,4,color(Ink));
         button(Drive,s.engine.drive ? "DRIVE [G]" : "NEUTRAL [G]",s,s.engine.drive);
-        text(s.engine.brake>0 ? "BRAKING" : s.engine.shifting ? "SHIFTING" : !s.engine.ignition ? "ENGINE OFF" : "WASD DRIVE / S OR SPACE BRAKE",172,700,0,s.engine.brake>0 ? Red : Ink);
+        text(s.engine.brake>0 ? "BRAKING" : s.engine.shifting ? "SHIFTING" : !s.engine.ignition ? "ENGINE OFF" : s.engine.gear==-2 ? "REVERSE / W TO DRIVE FORWARD" : "W GAS / S BRAKE + REVERSE",172,700,0,s.engine.brake>0 ? Red : Ink);
         button(Start,s.ignitionRequested ? "STOP [X]" : "START [X]",s);
-        button(Rev,"GAS [R]",s,s.revHeld);button(Brake,"BRAKE [S]",s,s.brakeHeld);
-        button(Idle,"IDLE [I]",s);button(Mute,s.muted ? "UNMUTE" : "MUTE [M]",s,s.muted);
+        button(Rev,"GAS [W]",s,s.revHeld);button(Brake,"BRAKE SPACE",s,s.brakeHeld);
+        button(Drift,"DRIFT [SHIFT]",s,s.driftHeld);button(Mute,s.muted ? "UNMUTE" : "MUTE [M]",s,s.muted);
         button(RecoverCar,"RECOVER [C]",s);button(RestartRace,"NEW RUN [BKSP]",s);
         if(game.offroad)text("ON THE SHOULDER",24,605,0,Yellow);
+        if(!game.wrongWay && !game.recovering && !game.finished &&
+            (game.driftScore>1 || (game.lastDriftScore>1 && game.time-game.driftEndedAt<2))) {
+            const bool active=game.driftScore>1;
+            rounded({500,235,280,73},8,color(0x0C1721,.8f));
+            centered(active ? "DRIFT" : "DRIFT BANKED",640,244,0,Yellow);
+            std::snprintf(label,sizeof(label),"+ %.0f",active ? game.driftScore : game.lastDriftScore);centered(label,640,264,2,Yellow);
+        }
+        if(game.totalDriftScore>1) {
+            std::snprintf(label,sizeof(label),"DRIFT TOTAL %.0f / BEST %.0f",game.totalDriftScore,game.bestDriftScore);text(label,26,203,0,Yellow);
+        }
         line(398,668,506,668,2,color(Ink,.25f));circle(452+float(game.steeringInput)*54,668,5,color(Blue));text("STEERING",399,633,0,0xD1DDE4);
     }
     void draw(const State &s,const EngineVisualLayout &layout,const EngineVisualSnapshot &v,
@@ -449,7 +459,8 @@ public:
         button(Dyno,v.dyno ? "DYNO: ON" : "DYNO: OFF",s,v.dyno);
         std::snprintf(b,sizeof(b),"%.0f%%",v.clutch*100);gauge({133.33f,488,133.34f,120},"CLUTCH",v.clutch,0,1,b);sliderTrack(Clutch,v.clutch,s);
         panel({266.67f,488,133.33f,120},s.engine.drive ? "AUTOMATIC" : "GEAR");
-        if(v.gear<0)std::snprintf(b,sizeof(b),"N");
+        if(v.gear==-2)std::snprintf(b,sizeof(b),"R");
+        else if(v.gear<0)std::snprintf(b,sizeof(b),"N");
         else std::snprintf(b,sizeof(b),s.engine.drive ? "D%d" : "%d",v.gear+1);
         centered(b,333,513,3,s.engine.shifting ? Yellow : Ink);
         button(GearDown,"-",s);button(GearUp,"+",s);button(Brake,"BRAKE S",s,s.brakeHeld);
@@ -857,7 +868,7 @@ void SoundMetalRenderer::stop() {
     m_impl->session.reset();
 }
 void SoundMetalRenderer::update(const State &state) {
-    m_impl->game.controls(state.steering,state.roadView && state.ready,state.testPilot,state.testKeyboard);
+    m_impl->game.controls(state.steering,state.roadView && state.ready,state.testPilot,state.testKeyboard,state.driftHeld);
     std::lock_guard<std::mutex> lock(m_impl->stateMutex);m_impl->state=state;
 }
 void SoundMetalRenderer::recoverCar() {m_impl->game.recover();}

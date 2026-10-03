@@ -42,17 +42,26 @@ accelerator, inhibits new upshifts, and uses higher downshift thresholds to
 retain engine braking. The GUI only sends pedal/mode commands.
 
 `A` toggles automatic Drive on the dashboard; `G` does so in the driving view.
-Hold `R`/`W` for acceleration and `S` for brakes. In driving view, Space also
-brakes and `X` starts/stops ignition; dashboard Space retains its ignition action.
+Hold `R`/`W` for acceleration and `S` for brakes. In driving view, holding S/Down
+after stopping engages reverse; W/Up brakes out of reverse before moving forward.
+Space brakes without changing direction, and `X` starts/stops ignition;
+dashboard Space retains its ignition action.
 Keyboard/mouse pedal holds are released on focus loss. The throttle slider
 remains a persistent pedal setting. Manual clutch/gear control and the dyno
-exit automatic mode. Drive works with the scripted forward gears; there is no
-reverse gear or separately simulated torque converter.
+exit automatic mode. Reverse uses the magnitude of the script's first gear ratio,
+with a negative road-travel direction. It retains the legacy drivetrain's
+engine-aligned flywheel, physical inertia, clutch and vehicle load; it does not
+reverse the engine or fabricate RPM. Direction changes require speed below
+0.15 m/s and a 0.18-second stop hold. Reverse throttle tapers near 7 m/s
+(about 16 mph). This is an arcade reverse model, not an authored factory ratio
+or a separately simulated torque converter. Vehicle odometer distance stays
+positive; a separate signed displacement feeds the game and wheel motion.
 
 ## Driving game
 
 `V` switches between the game and engine dashboard. `--road` selects the game
-on launch. A/D or left/right steer, R/W/up accelerate, S/down/Space brake, X
+on launch. A/D or left/right steer, R/W/up accelerate, S/down brake then reverse,
+Space only brakes, Shift drifts, X
 operates ignition, C recovers, and
 Backspace starts a new run. Pedals and steering release on focus loss. The game
 reserves arrow keys for driving even when a dashboard slider previously had focus.
@@ -75,14 +84,26 @@ Keyboard input uses a cubic ramp: small taps make precise corrections, while a
 held key reaches full turn strength in about 167 ms. Releasing centres the input
 in 50 ms, and the turn rate settles rapidly without residual sideslip. At 100 mph,
 full lock gives about a 57 m turning radius, deliberately beyond realistic tyre
-grip. The car's travel follows its heading; it does not keep sliding toward a wall
+grip. Normal travel follows the car's heading; it does not keep sliding toward a wall
 after input is released. Grass retains 85% of steering authority, blended from
-individual tyre contact patches. The engine still owns forward speed, distance,
+individual tyre contact patches. The engine still owns speed, distance,
 gearbox load and sound. Integration remains bounded at 240 Hz on the game worker.
 The HUD's steering marker displays normalized input, independent of wheel lock.
 Road resistance scales with the off-road fraction. The HUD's corner-speed advice
 uses the new turning envelope and looks 250 metres ahead, with braking/reaction
 distance. Guidance never applies pedals or steering for normal play.
+
+Holding Shift while steering requests an assisted drift. A bounded body-slip
+angle (up to about 33 degrees) builds above 5 m/s, reaches full strength at
+13 m/s, and settles quickly on release. The trajectory remains controlled by
+the arcade steering model, so engaging/releasing drift does not snap the car
+sideways. Drift adds a small bounded road load through the existing mailbox;
+audio synthesis and buffering are unchanged. Points require forward motion above
+7 m/s, sufficient slip, and tyres on the road. Release banks the score; the HUD
+shows current, total and best. Reverse cannot earn drift points or checkpoints.
+The camera follows the trajectory during a slide and turns to look behind while
+reversing. Skid marks use a fixed 512-quad renderer buffer, culled by distance
+and age; they never run on the audio worker.
 
 Eight ordered forward checkpoints validate each lap. Crossing the finish backwards
 or circling near the start cannot award laps. Three laps finish the time trial.
@@ -118,12 +139,28 @@ the scene. The dashboard uses one draw call; the game uses three (scenery, car, 
 PNG encoding runs on a utility queue after GPU readback. See
 [asset credits](../THIRD_PARTY_NOTICES.md) for sources/licenses.
 
-The game has one circuit, GT3 and concept bodies, forward driving, and a time
-trial mode. It does not yet have opponents, reverse, a handbrake or matching
+The game has one circuit, GT3 and concept bodies, forward/reverse driving,
+assisted drifting and a time trial mode. It does not yet have opponents, a city,
+a physical handbrake model or matching
 bodies for every engine. The game/test pilot is only enabled by validation flags,
 never normal play.
 
 ## Programmatic checks
+
+For a short reverse/drift test with programmatic Metal captures and PCM checks:
+
+```sh
+python3 test/sound_gui_smoke.py --arcade-only --presets porsche_911_gt3
+# Makes sound through the system output:
+python3 test/sound_gui_smoke.py --arcade-only --real-audio --presets porsche_911_gt3
+```
+
+This accelerates, slides, brakes, reverses, returns to forward drive, and stops
+at idle. It deliberately stalls AppKit and rendering for 1.2 seconds each,
+checks continued game/audio updates, and requires a completed JSON report and
+`ARCADE_RESULT=PASS`. The native input suite separately checks Shift/mouse
+overlap, key release and focus loss. Core runtime tests exercise direction
+interlocks, reverse speed, braking and idle with both Supra and GT3 engines.
 
 The Python smoke harness uses SDL's dummy audio device by default. It is silent.
 It saves PCM/WAV, callback timing, control assertions, and summary logs under
@@ -335,6 +372,17 @@ python3 test/sound_gui_smoke.py --game-only --real-audio --presets porsche_911_g
 Separate 41-second automatic-driving audio checks passed for the Supra on the
 dummy device and GT3 on CoreAudio: five upshifts each, actual RPM drops and
 throttle cuts, no missing/clipped/unexpected silent PCM, and no stall at rest.
+
+The reverse/drift update passed 77 portable tests, 85 packaged tests, and the
+native input/render suite across seven engine presets.
+Simulated reverse runs reached 16.24 mph in the Supra and 15.30 mph in the GT3;
+both stopped, returned to forward drive and finished idling above 750 RPM.
+A GT3 CoreAudio reverse/drift run checked 14.32 seconds after startup, including
+separate 1.2-second AppKit and renderer stalls. It recorded zero missing audio
+frames, silent PCM blocks, clipped/invalid samples or Metal errors. Rendering
+averaged 55.04 FPS including the deliberate rendering pause, with 0.60 ms mean
+CPU work and 3.69 ms mean GPU time at 2560×1600. The maximum mixer callback gap
+was 11.71 ms; this is a callback-cadence measurement, not speaker latency.
 
 See [ENGINES.md](ENGINES.md) for model limitations, including the radial-9 startup
 issue at the host's default simulation frequency. Hosted CI validates builds,

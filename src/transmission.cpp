@@ -57,10 +57,13 @@ void Transmission::addToSystem(
 }
 
 void Transmission::changeGear(int newGear) {
-    if (newGear < -1 || newGear >= m_gearCount) return;
-    else if (newGear != -1) {
+    if (newGear < Reverse || newGear >= m_gearCount || (newGear == Reverse && m_gearCount == 0)) return;
+    else if (newGear != Neutral) {
+        const int direction=newGear == Reverse ? -1 : 1;
+        // Never reverse a moving vehicle's travel by merely changing its gear.
+        if (direction != m_vehicle->getTravelDirection() && m_vehicle->getSpeed() > .15) return;
         const double m_car = m_vehicle->getMass();
-        const double gear_ratio = m_gearRatios[newGear];
+        const double gear_ratio = getGearRatio(newGear);
         const double diff_ratio = m_vehicle->getDiffRatio();
         const double tire_radius = m_vehicle->getTireRadius();
         const double f = tire_radius / (diff_ratio * gear_ratio);
@@ -76,6 +79,10 @@ void Transmission::changeGear(int newGear) {
         m_rotatingMass->p_x = m_rotatingMass->p_y = 0;
         m_rotatingMass->m = m_car;
         m_rotatingMass->v_theta = new_v_theta;
+        // The legacy drivetrain stores kinetic energy in an engine-aligned
+        // flywheel. Reverse changes signed road travel while retaining its
+        // physical inertia, clutch load, energy and engine rotation.
+        m_vehicle->setTravelDirection(direction);
     }
 
     m_gear = newGear;

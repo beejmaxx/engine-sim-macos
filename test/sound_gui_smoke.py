@@ -4,6 +4,7 @@
 Default: silent, headless audio/control tests for Supra and LS.
 --native-only: hidden native input checks + Metal PNGs, requires a desktop login.
 --game-only: complete circuit/impact/recovery check with hidden Metal rendering.
+--arcade-only: brief reverse/drift/audio check with hidden Metal rendering.
 --real-audio: use the real system output (makes sound).
 Run timing checks on their own, without a concurrent build or audio player.
 """
@@ -23,11 +24,12 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--native-only", action="store_true")
     mode.add_argument("--game-only", action="store_true")
+    mode.add_argument("--arcade-only", action="store_true")
     parser.add_argument("--real-audio", action="store_true", help="Use system audio; tests will make sound")
     parser.add_argument("--presets", nargs="+", default=["supra", "ls"], help="Engine IDs for headless sound tests")
     args = parser.parse_args()
     if args.native_only and args.real_audio:
-        parser.error("The native input suite uses dummy audio; use --game-only for a real-audio game test")
+        parser.error("The native input suite uses dummy audio; use --arcade-only or --game-only for a real-audio game test")
     args.output.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ)
     if args.real_audio:
@@ -38,9 +40,10 @@ def main():
         directory = args.output / "gui-ui"
         directory.mkdir(exist_ok=True)
         commands = [("gui-ui-test", ["--ui-test", str(directory.resolve()), "--log", str(directory.resolve() / "playback.log")])]
-    elif args.game_only:
-        prefix = (args.output / "driving-game").resolve()
-        commands = [("driving-game-test", ["--game-test", str(prefix), "--offscreen",
+    elif args.game_only or args.arcade_only:
+        prefix = (args.output / ("arcade" if args.arcade_only else "driving-game")).resolve()
+        flag = "--arcade-test" if args.arcade_only else "--game-test"
+        commands = [(prefix.name + "-test", [flag, str(prefix), "--offscreen",
                      "--preset", args.presets[0], "--log", str(prefix) + "-playback.log"])]
     else:
         commands = [("gui-" + preset + "-run", ["--self-test", str((args.output / ("gui-" + preset)).resolve()),
@@ -53,14 +56,15 @@ def main():
                                     env=environment, stdout=output, stderr=subprocess.STDOUT,
                                     timeout=210 if args.native_only or args.game_only else 120)
         complete = not args.native_only or "UI_RESULT=PASS" in log.read_text()
-        if args.game_only:
-            report = args.output / "driving-game.json"
-            complete = "GAME_RESULT=PASS" in log.read_text() and report.exists()
+        if args.game_only or args.arcade_only:
+            report = args.output / ("arcade.json" if args.arcade_only else "driving-game.json")
+            marker = "ARCADE_RESULT=PASS" if args.arcade_only else "GAME_RESULT=PASS"
+            complete = marker in log.read_text() and report.exists()
             if complete:
                 complete = json.loads(report.read_text())["result"] == "PASS"
         if result.returncode or not complete:
             print("FAIL:", name, "exit", result.returncode, "— see", log)
-            if args.native_only or args.game_only:
+            if args.native_only or args.game_only or args.arcade_only:
                 print("The native/game test must finish all checks and print its PASS result.")
             return 1
     print("PASS:", len(commands), "test runs. Evidence:", args.output)

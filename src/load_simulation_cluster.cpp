@@ -248,7 +248,8 @@ void LoadSimulationCluster::drawCurrentGear(const Bounds &bounds) {
         : -1;
     std::stringstream ss;
     
-    if (gear != -1) ss << (gear + 1);
+    if (gear == Transmission::Reverse) ss << "R";
+    else if (gear != -1) ss << (gear + 1);
     else ss << "N";
 
     drawCenteredText(ss.str(), body, 64.0f, Bounds::center);

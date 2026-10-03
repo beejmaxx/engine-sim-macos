@@ -21,9 +21,11 @@ public:
 
     void update(const DrivingSnapshot &pose,double dt) {
         const bool reset=!ready || pose.time<lastTime || pose.recoveries!=lastRecovery;
-        if(reset) {yaw=pose.yaw;ready=true;}
+        // Follow travel through a drift and look behind the car in reverse.
+        const double target=drivingAngle(pose.yaw+pose.driftAngle+(pose.reversing ? 3.141592653589793 : 0));
+        if(reset) {yaw=target;ready=true;}
         else if(std::isfinite(dt) && dt>0)
-            yaw=drivingAngle(yaw+drivingAngle(pose.yaw-yaw)*(1-std::exp(-std::min(dt,.1)*16)));
+            yaw=drivingAngle(yaw+drivingAngle(target-yaw)*(1-std::exp(-std::min(dt,.1)*16)));
         const Vector f{std::sin(yaw),0,std::cos(yaw)},r{f.z,0,-f.x},p{pose.x,0,pose.z};
         // Follow translation exactly: speed must not make the car lag or change
         // its distance from the camera. Rendered game poses are already smooth.

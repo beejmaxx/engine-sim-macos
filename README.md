@@ -30,12 +30,15 @@ focuses on responsive sound and a native Mac interface.
 - A credited Porsche 911 GT3 body for the GT3 preset, reflective paint,
   moving front wheels, body lean,
   a responsive chase camera and a large MPH/RPM/gear HUD. The engine simulation drives
-  actual forward travel; road and wheel motion use metres.
+  actual forward and reverse travel; road and wheel motion use metres.
   The sun stays in the world, moving across the view as the car turns.
 - Arcade handling with strong cornering, fast self-centring and forgiving wall
   scrapes. Short keyboard taps still make small corrections at speed, and grass
   retains most steering control. Strong brakes work with **S**, **Down** or
   **Space** in driving view; **X** operates the ignition there.
+- Hold **S/Down** after stopping to reverse; **W/Up** brakes out of reverse
+  before moving forward. Hold **Shift** while steering for an assisted drift,
+  with skid marks and drift points. Releasing it smoothly restores grip.
 - Audio production runs independently of the UI. The renderer consumes bounded
   snapshots; a slow or hidden window does not have to delay sound production.
 - Native Metal rendering, display-synchronized by default, with optional glow
@@ -95,8 +98,10 @@ as the app, avoiding a dependency on a newer Homebrew binary's minimum OS.
 | **X** in the game, **Space** on the dashboard | Start/stop ignition |
 | **G** in the game, **A** on the dashboard, or **AUTO DRIVE** | Automatic Drive / neutral |
 | **Hold R**, **W**, **Up**, or the **GAS** button | Accelerate while held |
-| **Hold S**, **Down**, **Space** in the game, or **BRAKE** | Apply the brakes (takes priority over throttle) |
+| **Hold S / Down** in the game | Brake, then reverse once stopped; release the accelerator first |
+| **Hold Space** in the game, **S** on the dashboard, or **BRAKE** | Brake without changing direction; overrides throttle |
 | **A / D** or **Left / Right** in the game | Steer; releasing returns the wheels toward centre |
+| **Hold Shift** or **DRIFT** while steering | Assisted slide above about 15 mph; release to straighten and bank points |
 | **C** or **RECOVER** | Stop and return to the last checkpoint; adds a 3-second penalty |
 | **Backspace** or **NEW RUN** | Stop and restart the three-lap time trial |
 | **V** or the view button | Switch between the driving scene and engine dashboard |
@@ -111,8 +116,9 @@ as the app, avoiding a dependency on a newer Homebrew binary's minimum OS.
 | **1 / 2** | Quick-select Supra / LS |
 | **Tab**, arrows, **Return** | Focus, adjust, activate controls |
 
-Hold-to-rev releases when the window loses focus. The engine starts stopped
-unless `--play` is passed. To list preset IDs:
+Held pedals, steering and drift release when the window loses focus. The engine
+starts stopped unless `--play` is passed. `--muted` starts with sound muted;
+**M** restores it. To list preset IDs:
 
 ```sh
 ./run-sound-gui.sh --list-engines
@@ -123,8 +129,11 @@ unless `--play` is passed. To list preset IDs:
 To hear a run through the gears, start with **X** in the game or **Space** on
 the dashboard, select Drive with **G** in the game or **A** on the dashboard,
 then hold **R** or **W**. Drive
-handles the launch clutch and shifts automatically; **S** brakes. The gear panel
-shows `D1`, `D2`, etc., and highlights shifts. Press **G** in the game or
+handles the launch clutch and shifts automatically; **S** brakes, then reverses
+in the game. **Space** only brakes. **W** stops reverse motion before driving
+forward. Reverse is limited to about 16 mph and uses the first gear's ratio
+magnitude with the existing clutch and vehicle load. The gear panel shows
+`R` in reverse and highlights shifts. Press **G** in the game or
 **A** on the dashboard again for neutral and
 free revving. Manual gear/clutch changes and the dyno leave automatic mode.
 This is automatic control of the existing simulated clutch/gearbox, not a
@@ -155,6 +164,9 @@ python3 test/sound_gui_smoke.py --presets porsche_911_gt3 porsche_911_carrera_32
 
 # Hidden native input + Metal render tests; requires a logged-in Mac desktop.
 python3 test/sound_gui_smoke.py --native-only
+
+# Brief reverse, drift, audio and deliberate UI/render-stall test.
+python3 test/sound_gui_smoke.py --arcade-only --presets porsche_911_gt3
 ```
 
 Run audio timing tests without a concurrent build or another simulator instance.

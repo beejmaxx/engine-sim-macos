@@ -16,6 +16,10 @@ class SoundRoadScene {
     struct Face {V3 a,b,c;simd_float4 tint;unsigned kind;std::array<simd_float2,3> uv{};};
     struct ClipVertex {V3 p;simd_float2 uv;};
     struct Tree {float x,z,height,shade;};
+    struct Skid {V3 a,b,c,d;double time;};
+    std::array<Skid,512> skids{};
+    size_t skidWrite=0,skidCount=0;
+    DrivingSnapshot skidPose{};
     std::vector<Face> faces,world;
     std::vector<Tree> trees;
     DrivingCourse track;
@@ -140,6 +144,23 @@ public:
     const DrivingCourse &course() const {return track;}
     const DrivingSnapshot &carPose() const {return vehicle;}
     void update(const DrivingSnapshot &pose,double dt) {
+        if(pose.time<vehicle.time || pose.recoveries!=vehicle.recoveries) {
+            skidCount=skidWrite=0;skidPose=pose;
+        }
+        const double moved=std::hypot(pose.x-skidPose.x,pose.z-skidPose.z);
+        if(moved>.45) {
+            if(moved<3 && std::abs(pose.driftAngle)>.1 && pose.speed>7 && !pose.offroad && pose.recoveries==skidPose.recoveries) {
+                auto tyre=[](const DrivingSnapshot &p,float side,float width) {
+                    const V3 f{float(std::sin(p.yaw)),0,float(std::cos(p.yaw))},r{f.z,0,-f.x};
+                    return V3{float(p.x),.023f,float(p.z)}-f*float(DrivingHandling::RearAxle)+r*(side*.78f+width);
+                };
+                for(float side:{-1.f,1.f}) {
+                    skids[skidWrite]={tyre(skidPose,side,-.11f),tyre(skidPose,side,.11f),tyre(pose,side,.11f),tyre(pose,side,-.11f),pose.time};
+                    skidWrite=(skidWrite+1)%skids.size();skidCount=std::min(skids.size(),skidCount+1);
+                }
+            }
+            skidPose=pose;
+        }
         vehicle=pose;chase.update(pose,dt);
         auto vector=[](DrivingCamera::Vector p) {return V3{float(p.x),float(p.y),float(p.z)};};
         camera=vector(chase.position);forward=vector(chase.forward);right=vector(chase.right);up=vector(chase.up);
@@ -177,6 +198,11 @@ public:
             const V3 across=simd_normalize(V3{center.z-camera.z,0,camera.x-center.x})*(t.height*1.0524f/2),rise{0,t.height,0};
             const auto a=center-across,b=center+across,c=b+rise,d=a+rise;const simd_float4 tint{t.shade,t.shade,t.shade,1};
             faces.push_back({a,b,c,tint,6,{{{0,1},{1,1},{1,0}}}});faces.push_back({a,c,d,tint,6,{{{0,1},{1,0},{0,0}}}});
+        }
+        for(size_t i=0;i<skidCount;++i) {
+            const auto &s=skids[i];const auto center=(s.a+s.c)*.5f;
+            if(vehicle.time-s.time>25 || simd_length_squared(center-camera)>160*160)continue;
+            quad(s.a,s.b,s.c,s.d,0x151C20);
         }
         shadow();paint(emit);
     }

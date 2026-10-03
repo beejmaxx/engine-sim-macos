@@ -14,8 +14,9 @@ class Simulator;
 class AudioEngineRunner {
 public:
     enum class Action { Start, Stop, Throttle, Volume, Blip, ExhaustMix, Roughness,
-        HighFrequency, LowNoise, Dyno, DynoSpeed, Clutch, Gear, Drive, Brake };
+        HighFrequency, LowNoise, Dyno, DynoSpeed, Clutch, Gear, Drive, Brake, BackPedal };
     struct Command { Action action; double value = 0; };
+    // Signed road displacement/speed; the odometer in visual telemetry stays positive.
     struct VehicleTelemetry { double time=0,distance=0,speed=0; };
     struct Snapshot {
         double rpm, simulatedSeconds, queuedMs, maxBlockMs, cpuSeconds, maxCpuBlockMs, maxWakeupOverrunMs;
@@ -25,7 +26,7 @@ public:
         bool ignition, cranking, blipping;
         double vehicleSpeed, clutch, brake, appliedThrottle;
         int gear;
-        bool drive, shifting;
+        bool drive, shifting, backPedal;
     };
 
     ~AudioEngineRunner() { stop(); }
@@ -58,7 +59,7 @@ private:
     std::atomic<bool> m_ignition{false}, m_cranking{false}, m_blipping{false};
     std::atomic<double> m_vehicleSpeed{0}, m_clutch{0}, m_brake{0}, m_appliedThrottle{0};
     std::atomic<int> m_gear{-1};
-    std::atomic<bool> m_drive{false}, m_shifting{false};
+    std::atomic<bool> m_drive{false}, m_shifting{false},m_backPedal{false};
     // Latest-value game mailboxes. The producer never waits for gameplay or
     // graphics. Atomic payload fields also make seqlock retries race-free.
     std::atomic<unsigned> m_vehicleSequence{0};

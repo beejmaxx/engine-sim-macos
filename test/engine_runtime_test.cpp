@@ -154,3 +154,62 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
         delete output.vehicle; delete output.transmission;
     }
 }
+
+TEST(EngineRuntime, ReverseBrakesBeforeChangingDirectionAndKeepsEngineRunning) {
+    const std::filesystem::path assets(ENGINE_SIM_TEST_ASSET_DIRECTORY);
+    for(const char *script:{"engines/atg-video-2/03_2jz.mr","engines/porsche/01_porsche_911_gt3.mr"}) {
+        SCOPED_TRACE(script);
+        const auto entry=std::filesystem::temp_directory_path()/("engine-sim-reverse-"+
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".mr");
+        {std::ofstream f(entry);f<<"import "<<std::quoted((assets/script).generic_string())<<"\nmain()\n";}
+        es_script::Compiler compiler;compiler.initialize(assets.string());
+        const bool compiled=compiler.compile(entry.string());std::filesystem::remove(entry);
+        if(!compiled){compiler.destroy();FAIL()<<"Reverse test script failed to compile";}
+        auto output=compiler.execute();compiler.destroy();
+        ASSERT_NE(output.engine,nullptr);ASSERT_NE(output.vehicle,nullptr);ASSERT_NE(output.transmission,nullptr);
+        output.engine->calculateDisplacement();
+        auto *sim=output.engine->createSimulator(output.vehicle,output.transmission,44100);
+        sim->setSimulationFrequency(std::string(script).find("porsche")!=std::string::npos ? 5000 : 2500);
+        sim->setSynthesizerLatencyCorrectionEnabled(false);
+        output.engine->getIgnitionModule()->m_enabled=true;
+        AutomaticTransmission automatic;automatic.setEnabled(true,*output.transmission);
+        double peakReverse=0,peakForward=0,previousOdometer=0,reverseMetres=0;
+        int reverseFrames=0,forwardAfter=0;bool reverseStop=false,guardChecked=false;
+        int16_t pcm[512]{};int audible=0;
+        for(int frame=0;frame<4200;++frame) {
+            const double t=frame*.005;
+            const bool back=t>=6 && t<15,brake=(t>=10 && t<13)||t>=18;
+            const double pedal=(t>=3 && t<6)||(t>=15 && t<18) ? .65 : 0;
+            output.vehicle->setBrake(brake);
+            const double speedBefore=output.vehicle->getSpeed();const int directionBefore=output.vehicle->getTravelDirection();
+            if(!guardChecked && t>=5 && speedBefore>3) {
+                const int gear=output.transmission->getGear();output.transmission->changeGear(Transmission::Reverse);
+                EXPECT_EQ(output.transmission->getGear(),gear);guardChecked=true;
+            }
+            const double applied=automatic.update(*output.transmission,*output.engine,*output.vehicle,pedal,t<2,.005,back);
+            if(output.vehicle->getTravelDirection()!=directionBefore)EXPECT_LT(speedBefore,.15);
+            sim->m_starterMotor.m_enabled=t<2;output.engine->setSpeedControl(std::max(applied,t<2 ? .02 : 0));
+            sim->startFrame(.005);while(sim->simulateStep()){}sim->endFrame();
+            while(sim->synthesizer().pumpAudioRendering()){}
+            const int count=sim->readAudioOutput(512,pcm);
+            audible+=std::count_if(pcm,pcm+count,[](int16_t x){return std::abs(int(x))>20;});
+            const double speed=output.vehicle->getSignedSpeed();
+            EXPECT_GE(output.vehicle->getTravelledDistance(),previousOdometer);previousOdometer=output.vehicle->getTravelledDistance();
+            if(speed<-.5){++reverseFrames;peakReverse=std::max(peakReverse,-speed);reverseMetres-=speed*.005;}
+            if(t>16 && speed>1)++forwardAfter;
+            if(t<6)peakForward=std::max(peakForward,speed);
+            if(t>12 && t<13) {
+                EXPECT_EQ(output.transmission->getGear(),Transmission::Reverse);
+                EXPECT_LT(std::abs(speed),.2);reverseStop=true;
+            }
+        }
+        EXPECT_TRUE(guardChecked);EXPECT_TRUE(reverseStop);EXPECT_GT(peakForward,5);
+        EXPECT_GT(reverseFrames,200);EXPECT_GT(reverseMetres,8);EXPECT_LT(peakReverse,8);
+        EXPECT_GT(forwardAfter,100);EXPECT_GT(audible,10000);
+        EXPECT_LT(output.vehicle->getSpeed(),.2);EXPECT_GT(output.engine->getRpm(),400);
+        EXPECT_EQ(output.transmission->getGear(),0);
+        std::cout<<"REVERSE "<<script<<" peak_reverse_mph="<<peakReverse/.44704<<" reverse_m="<<reverseMetres
+            <<" idle_rpm="<<output.engine->getRpm()<<'\n';
+        sim->releaseSimulation();delete sim;output.engine->destroy();delete output.engine;delete output.vehicle;delete output.transmission;
+    }
+}

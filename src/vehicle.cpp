@@ -28,7 +28,9 @@ void Vehicle::initialize(const Parameters &params) {
 }
 
 void Vehicle::update(double dt) {
-    m_travelledDistance += getSpeed() * dt;
+    const double distance=getSpeed()*dt;
+    m_travelledDistance += distance;
+    m_signedTravelledDistance += distance*m_travelDirection;
 }
 
 void Vehicle::addToSystem(atg_scs::RigidBodySystem *system, atg_scs::RigidBody *rotatingMass) {
