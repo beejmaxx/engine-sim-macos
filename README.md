@@ -9,7 +9,7 @@ built on [Carles Onielfa's Open Engine Simulator](https://github.com/carlesoniel
 The original simulation, sounds, and visual design are their work. This fork
 focuses on responsive sound and a native Mac interface.
 
-![The driving view with the Porsche GT3 engine and generic concept-car body](docs/images/driving-gt3.png)
+![The Porsche 911 GT3 driving view](docs/images/driving-gt3.png)
 
 [See the piston cutaway view](docs/images/porsche-gt3.png).
 
@@ -20,17 +20,21 @@ focuses on responsive sound and a native Mac interface.
 - Hold-to-rev keyboard/mouse input, a persistent throttle slider, live exhaust
   and noise controls, mute, ignition, and a layered engine cutaway.
 - Automatic Drive mode uses the real vehicle load and gearbox, handles clutch
-  launch and up/downshifts, and briefly cuts throttle during a shift. A brake
-  pedal lets you slow down and accelerate again.
+  launch and up/downshifts, and briefly cuts throttle during a shift. Braking
+  cuts the accelerator, prevents new upshifts, and downshifts for engine braking.
 - Clear native Mac monospaced text, rasterized once into a Retina font atlas.
 - A closed forest circuit with steering, tire grip, off-road resistance and
   barrier collisions. A three-lap time trial has ordered checkpoints, lap/best
   timers, a finish state and a minimap. Recover to the last checkpoint or start
   a new run without reloading the engine.
-- A detailed concept-car mesh, reflective paint, moving front wheels, body lean,
+- A credited Porsche 911 GT3 body for the GT3 preset, reflective paint,
+  moving front wheels, body lean,
   a responsive chase camera and a large MPH/RPM/gear HUD. The engine simulation drives
   actual forward travel; road and wheel motion use metres.
   The sun stays in the world, moving across the view as the car turns.
+- Progressive keyboard steering with front/rear tyre forces and chassis yaw
+  inertia. Quick taps make small corrections at speed; sustained presses build
+  a turn. Corner-speed and braking cues help judge when to slow down.
 - Audio production runs independently of the UI. The renderer consumes bounded
   snapshots; a slow or hidden window does not have to delay sound production.
 - Native Metal rendering, display-synchronized by default, with optional glow
@@ -41,6 +45,8 @@ focuses on responsive sound and a native Mac interface.
 
 The new Porsche presets are **approximate sound models**, not recordings or
 factory-calibrated simulations. See [engines and provenance](docs/ENGINES.md).
+Other engine presets currently retain the credited concept body, labelled in
+the driving view; matching bodies are not bundled for the entire engine library.
 This is an experimental sound simulator, not an engineering or tuning tool.
 
 ## Build on an Apple Silicon Mac

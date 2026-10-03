@@ -5,6 +5,7 @@
 
 class Vehicle {
     public:
+        static constexpr double MaximumBrakeDeceleration = 9.81 * 1.15;
         struct Parameters {
             double mass;
             double dragCoefficient;

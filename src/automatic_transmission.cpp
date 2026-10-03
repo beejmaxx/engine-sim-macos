@@ -22,11 +22,14 @@ double AutomaticTransmission::update(Transmission &transmission, const Engine &e
     if (!m_enabled) return throttle;
     if (!std::isfinite(dt) || dt <= 0) return throttle;
     dt = std::min(dt, 0.05);
+    const bool braking=vehicle.getBrake()>.01;
+    if(braking)throttle=0;
     const double rpm = std::max(0.0, engine.getRpm());
     const double limit = std::max(1000.0, std::min(engine.getRedline(),
         engine.getIgnitionModule()->getRevLimit()) / units::rpm(1));
     const double wheelRpm = vehicle.getSpeed() / vehicle.getTireRadius()
         * vehicle.getDiffRatio() / units::rpm(1);
+    const double launchRpm = std::clamp(limit * 0.25, 1400.0, 2800.0);
     m_cooldown = std::max(0.0, m_cooldown - dt);
     if (!shifting() && vehicle.getSpeed() < 0.5 && transmission.getGear() > 0) {
         transmission.changeGear(0);
@@ -49,7 +52,11 @@ double AutomaticTransmission::update(Transmission &transmission, const Engine &e
             transmission.changeGear(m_nextGear);
             m_changedGear = true;
         }
-        const double engagement = std::clamp((m_shiftElapsed - 0.09) / 0.22, 0.0, 1.0);
+        double engagement = std::clamp((m_shiftElapsed - 0.09) / 0.22, 0.0, 1.0);
+        const double coupledRpm=wheelRpm*transmission.getGearRatio(transmission.getGear());
+        // Braking can pass through the idle-speed boundary during a shift.
+        // Do not reconnect an idling engine to wheels almost at a standstill.
+        if(rpm<700 || (throttle<.01 && coupledRpm<launchRpm*.9))engagement=0;
         m_clutch = engagement;
         transmission.setClutchPressure(m_clutch);
         const double torqueRecovery = std::clamp((m_shiftElapsed - 0.12) / 0.19, 0.0, 1.0);
@@ -62,12 +69,12 @@ double AutomaticTransmission::update(Transmission &transmission, const Engine &e
 
     const int gear = transmission.getGear();
     const double coupledRpm = wheelRpm * transmission.getGearRatio(gear);
-    const double upshiftRpm = limit * (0.48 + 0.44 * throttle);
-    const double downshiftRpm = limit * (throttle > 0.75 ? 0.43 : 0.24);
+    const double upshiftRpm = limit * (braking ? .98 : 0.48 + 0.44 * throttle);
+    const double downshiftRpm = limit * (braking ? .55 : throttle > 0.75 ? 0.43 : 0.24);
     int next = gear;
     if (m_cooldown == 0 && coupledRpm > 900) {
-        if (rpm >= upshiftRpm && gear + 1 < transmission.getGearCount()) next = gear + 1;
-        else if (gear > 0 && rpm < downshiftRpm &&
+        if (!braking && rpm >= upshiftRpm && gear + 1 < transmission.getGearCount()) next = gear + 1;
+        else if (gear > 0 && (braking ? coupledRpm : rpm) < downshiftRpm &&
             wheelRpm * transmission.getGearRatio(gear - 1) < upshiftRpm * 0.85) next = gear - 1;
     }
     if (next != gear) {
@@ -79,9 +86,9 @@ double AutomaticTransmission::update(Transmission &transmission, const Engine &e
         return 0;
     }
 
-    const double launchRpm = std::clamp(limit * 0.25, 1400.0, 2800.0);
-    if (coupledRpm > launchRpm * 0.9) m_clutch = std::min(1.0, m_clutch + dt * 3);
-    else if (throttle < 0.01 || vehicle.getBrake() > 0 || rpm < 700) m_clutch = 0;
+    if (rpm < 700) m_clutch = 0;
+    else if (coupledRpm > launchRpm * 0.9) m_clutch = std::min(1.0, m_clutch + dt * 3);
+    else if (throttle < 0.01 || vehicle.getBrake() > 0) m_clutch = 0;
     else {
         // Slip the clutch during launch, regulating engine speed instead of
         // abruptly coupling an idling engine to the full stationary mass.

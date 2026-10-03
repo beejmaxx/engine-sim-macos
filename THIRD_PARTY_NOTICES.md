@@ -19,6 +19,11 @@ This is an independent community fork, maintained at
   [Khronos glTF Sample Assets](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept),
   is used under **CC BY 4.0**. The converted mesh retains that license. See
   [source, modifications and license](assets/vehicles/concept/README.md).
+- **Porsche 911 GT3**, by [ChevroletSS](https://sketchfab.com/ChevroletSS), is
+  used under **CC BY 4.0**. This work is based on
+  [the original Porsche 911 GT3 model](https://sketchfab.com/3d-models/porsche-911-gt3-78d5c47ab2554c2592b7e499179a0792).
+  The converted mesh retains that license; see
+  [source, modifications and license](assets/vehicles/porsche_gt3/README.md).
 - **Pine Tree 01 preview render**, by Rico Cilliers and Rob Tuytel, from
   [Poly Haven](https://polyhaven.com/a/pine_tree_01), is used under **CC0 1.0**.
   See [scenery source and license](assets/scenery/README.md).

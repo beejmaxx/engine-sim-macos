@@ -53,7 +53,7 @@ void VehicleDragConstraint::calculate(Output *output, atg_scs::SystemState *syst
     const double A = m_vehicle->getCrossSectionArea();
     const double rollingResistance = m_vehicle->getRollingResistance();
     const double brakingForce = m_vehicle->getMass()
-        * (m_vehicle->getBrake() * 9.81 * 0.9 + m_vehicle->getRoadDeceleration());
+        * (m_vehicle->getBrake() * Vehicle::MaximumBrakeDeceleration + m_vehicle->getRoadDeceleration());
 
     output->limits[0][0] =
         -m_vehicle->linearForceToVirtualTorque(rollingResistance + brakingForce + 0.5 * airDensity * v_squared * c_d * A);

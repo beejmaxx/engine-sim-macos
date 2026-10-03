@@ -78,7 +78,7 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
         ASSERT_NE(output.transmission, nullptr);
         output.engine->calculateDisplacement();
         auto *simulator = output.engine->createSimulator(output.vehicle, output.transmission, 44100);
-        simulator->setSimulationFrequency(5000);
+        simulator->setSimulationFrequency(std::string(script).find("porsche")!=std::string::npos ? 5000 : 2500);
         simulator->setSynthesizerLatencyCorrectionEnabled(false);
         output.engine->getIgnitionModule()->m_enabled = true;
         AutomaticTransmission automatic;
@@ -86,18 +86,21 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
         int maxGear = 0, previousGear = 0, upshifts = 0, audible = 0;
         double maxSpeed = 0, beforeShiftRpm = 0, biggestRpmDrop = 0, afterShiftTime = -1;
         bool torqueCut = false;
+        int brakeUpshifts=0;
+        double sixtyDistance=-1,sixtyTime=-1,stopDistance=-1,stopTime=-1;
         int16_t samples[512]{};
-        for (int frame = 0; frame < 5000; ++frame) {
-            const double time = frame * .01;
+        constexpr double block=.005; // same controller cadence as the sound host
+        for (int frame = 0; frame < 8200; ++frame) {
+            const double time = frame * block;
             const bool cranking = time < 2;
-            const double pedal = time >= 3 && time < 35 ? 1 : 0;
-            output.vehicle->setBrake(time >= 35 ? 1 : 0);
+            const double pedal = time >= 4 && time < 28 ? 1 : 0;
+            output.vehicle->setBrake(time >= 28 ? 1 : 0);
             simulator->m_starterMotor.m_enabled = cranking;
             const double applied = automatic.update(*output.transmission, *output.engine,
-                *output.vehicle, pedal, cranking, .01);
+                *output.vehicle, pedal, cranking, block);
             torqueCut |= pedal == 1 && automatic.shifting() && applied < .5;
             output.engine->setSpeedControl(std::max(applied, cranking ? .02 : 0));
-            simulator->startFrame(.01);
+            simulator->startFrame(block);
             while (simulator->simulateStep()) { }
             simulator->endFrame();
             while (simulator->synthesizer().pumpAudioRendering()) { }
@@ -107,7 +110,14 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
             const double rpm = output.engine->getRpm();
             maxGear = std::max(maxGear, gear);
             maxSpeed = std::max(maxSpeed, output.vehicle->getSpeed());
-            if (gear > previousGear && time < 35) {
+            if(time>28.4 && gear>previousGear)++brakeUpshifts; // permit an already started shift
+            if(time>=28 && sixtyTime<0 && output.vehicle->getSpeed()<=60*.44704) {
+                sixtyTime=time;sixtyDistance=output.vehicle->getTravelledDistance();
+            }
+            if(sixtyTime>=0 && stopTime<0 && output.vehicle->getSpeed()<.5*.44704) {
+                stopTime=time;stopDistance=output.vehicle->getTravelledDistance();
+            }
+            if (gear > previousGear && time < 28) {
                 ++upshifts; beforeShiftRpm = rpm; afterShiftTime = time;
             }
             if (afterShiftTime >= 0 && time - afterShiftTime < .8)
@@ -120,6 +130,9 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
         EXPECT_GT(biggestRpmDrop, 300);
         EXPECT_TRUE(torqueCut);
         EXPECT_GT(audible, 10000);
+        EXPECT_EQ(brakeUpshifts,0);
+        ASSERT_GT(sixtyTime,28);ASSERT_GT(stopTime,sixtyTime);
+        EXPECT_LT(stopDistance-sixtyDistance,34);EXPECT_LT(stopTime-sixtyTime,2.7);
         EXPECT_LT(output.vehicle->getSpeed(), 1);
         EXPECT_GT(output.engine->getRpm(), 400);
         EXPECT_EQ(output.transmission->getGear(), 0);
@@ -129,6 +142,7 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
         std::cout << "DRIVE " << script << " max_gear=" << maxGear + 1 << " upshifts=" << upshifts
             << " peak_mph=" << maxSpeed / .44704 << " rpm_drop=" << biggestRpmDrop
             << " stopped_mph=" << output.vehicle->getSpeed() / .44704
+            << " sixty_stop_m=" << stopDistance-sixtyDistance << " sixty_stop_s=" << stopTime-sixtyTime
             << " idle_rpm=" << output.engine->getRpm() << '\n';
         simulator->releaseSimulation(); delete simulator;
         output.engine->destroy(); delete output.engine;

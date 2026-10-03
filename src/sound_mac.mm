@@ -281,6 +281,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     _state.loading=true;_state.ready=false;_state.ignitionRequested=false;_state.preset=preset;
     _engineMenuItem.submenu=[self engineMenu];
     put(_state.title,SoundSession::presets()[preset].title);
+    _state.carBody=SoundSession::presets()[preset].id=="porsche_911_gt3"
+        ? State::CarBody::PorscheGt3 : State::CarBody::Concept;
     _state.engine={};_state.waveform.fill(0);_state.throttle=0;_state.missing=0;_state.writeErrors=0;_state.layer=0;_state.dyno=false;_state.dynoRpm=1000;_state.clutch=0;
     put(_state.notice,"Loading engine and exhaust sound...");put(_state.output,"");
     _renderer.connectSession(nullptr);_session.reset();
@@ -572,6 +574,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         [self check:std::abs(s.volume-.4)<.001 && s.exhaustMix==1 && std::abs(s.roughness-_session->defaultRoughness())<.001 name:"restore"];
         [self check:_state.uncapped && !_state.effects name:"render_toggles"];
         [self check:_session->visualLayout().cylinderCount==testEngines[_testPreset].cylinders name:"correct_engine_geometry"];
+        [self check:(_state.carBody==State::CarBody::PorscheGt3)==(_session->preset().id=="porsche_911_gt3") name:"body_matches_engine_selection"];
         [_view testKey:@"u"];[_view testKey:@"f"];
         [_window setContentSize:NSMakeSize(1000,625)];
         [_view testSlider:Volume fraction:.35];[_view testKey:@" "];++_testStage;

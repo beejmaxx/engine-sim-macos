@@ -77,6 +77,8 @@ struct State {
     float throttle = 0, volume = .35, exhaust = 1, roughness = .23, redline = 6000;
     std::uint64_t missing = 0, writeErrors = 0;
     int preset = 0, layer = 0;
+    enum class CarBody { Concept, PorscheGt3 };
+    CarBody carBody=CarBody::Concept;
     float highFrequency=0, lowNoise=0, dynoRpm=1000, clutch=0;
     bool dyno=false, revHeld=false, drive=false, brakeHeld=false, roadView=false;
     float steering=0;

@@ -238,7 +238,7 @@ int verifyDriveSession(const std::filesystem::path &assets, std::size_t preset,
     if (!SDL_SetAudioPostmixCallback(session.device(), Capture::mix, &capture)) return 2;
     log << "preset=" << session.preset().id << " driver=" << SDL_GetCurrentAudioDriver()
         << " rate=" << format.freq << '\n';
-    telemetry << "seconds,rpm,gear,mph,pedal,applied_throttle,clutch,brake,shifting,missing_frames\n";
+    telemetry << "seconds,rpm,gear,mph,pedal,applied_throttle,clutch,brake,shifting,missing_frames,engine_seconds,distance_m\n";
     check(session.startEngine(), "start_queued");
     int stage = 0, maxGear = -1, previousGear = -1, upshifts = 0;
     double peakSpeed = 0, beforeShiftRpm = 0, shiftAt = -1, rpmDrop = 0;
@@ -282,7 +282,11 @@ int verifyDriveSession(const std::filesystem::path &assets, std::size_t preset,
         torqueCut |= state.throttle == 1 && state.shifting && state.appliedThrottle < .5;
         telemetry << time << ',' << state.rpm << ',' << state.gear + 1 << ',' << state.vehicleSpeed / .44704
             << ',' << state.throttle << ',' << state.appliedThrottle << ',' << state.clutch << ',' << state.brake
-            << ',' << state.shifting << ',' << audio.silenceFrames << '\n';
+            << ',' << state.shifting << ',' << audio.silenceFrames;
+        AudioEngineRunner::VehicleTelemetry vehicle;
+        if(session.vehicleTelemetry(vehicle))telemetry << ',' << vehicle.time << ',' << vehicle.distance;
+        else telemetry << ",nan,nan";
+        telemetry << '\n';
         SDL_Delay(50);
     }
     SDL_SetAudioPostmixCallback(session.device(), nullptr, nullptr);

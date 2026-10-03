@@ -14,6 +14,16 @@ TEST(DrivingCourse, ClosedCircuitHasContinuousMetreScaledGeometry) {
         EXPECT_NEAR(q.lateral,3,.2);EXPECT_LT(std::abs(std::remainder(q.distance-s,track.length())),1);
     }
 }
+TEST(DrivingCourse, CornerAdviceWarnsForHighSpeedApproachBeforeReachingCorner) {
+    DrivingCourse course;bool warning=false;
+    for(double distance=0;distance<150;distance+=5) {
+        const auto advice=course.cornerAdvice(distance,100*.44704);
+        if(advice.deceleration>6 && advice.distance>20) {
+            warning=true;EXPECT_LT(advice.speed,100*.44704);EXPECT_NE(advice.direction,0);
+        }
+    }
+    EXPECT_TRUE(warning);
+}
 TEST(DrivingGame, EngineTravelAndSteeringDetermineMotionWithoutGraphics) {
     DrivingGame game;const auto start=game.snapshot();
     for(int i=0;i<120;++i)game.advance(1./120,10./120,10,0);
@@ -33,41 +43,47 @@ TEST(DrivingGame, TireGripLimitsCorneringAndBarriersContainCar) {
     }
     EXPECT_GT(game.snapshot().collisions,0);
 }
-TEST(DrivingGame, SteeringRespondsAndStopsTurningPromptlyAfterRelease) {
-    DrivingGame game;
-    constexpr double dt=1./240,speed=15;
-    for(int i=0;i<12;++i)game.advance(dt,speed*dt,speed,1);
-    EXPECT_GT(game.snapshot().lateralG,.3); // perceptible response within 50 ms
-    for(int i=0;i<12;++i)game.advance(dt,speed*dt,speed,1);
-    double last=game.snapshot().lateralG;
-    EXPECT_GT(last,.65);
-    for(int i=0;i<24;++i) {
-        game.advance(dt,speed*dt,speed,0);
-        EXPECT_LE(game.snapshot().lateralG,last+1e-8);
-        last=game.snapshot().lateralG;
+TEST(DrivingHandling, ShortKeyboardTapsAllowSmallHighSpeedCorrections) {
+    for(double speed:{26.8224,44.704}) { // 60 and 100 mph
+        DrivingHandling chassis;double yaw=0,lateral=0,peakG=0;
+        for(int i=0;i<360;++i) {
+            chassis.advance(1./240,speed,i<24 ? 1 : 0,DrivingHandling::Input::Keyboard,false);
+            const auto &p=chassis.snapshot();yaw+=p.yawRate/240;
+            lateral+=std::sin(yaw+std::atan2(p.lateralSpeed,speed))*speed/240;
+            peakG=std::max(peakG,std::abs(p.lateralG));
+            if(i==11)EXPECT_GT(p.steer,0); // wheel response is visible within 50 ms
+        }
+        EXPECT_GT(lateral,.1);EXPECT_LT(lateral,.5); // useful correction, not a lane jump
+        EXPECT_LT(std::abs(yaw),.0175); // less than one degree
+        EXPECT_LT(peakG,.2);EXPECT_LT(std::abs(chassis.snapshot().lateralG),.01);
+        EXPECT_LT(std::abs(chassis.snapshot().yawRate),.001);
     }
-    EXPECT_LT(last,.05); // centre within 100 ms, no delayed increase in turn
-    EXPECT_EQ(game.snapshot().collisions,0);
 }
-TEST(DrivingGame, CountersteeringReversesTheTurnWithinOneTenthOfASecond) {
-    DrivingGame game;
-    constexpr double dt=1./240,speed=15;
-    for(int i=0;i<48;++i)game.advance(dt,speed*dt,speed,1);
-    ASSERT_GT(game.snapshot().lateralG,.8);
-    for(int i=0;i<24;++i)game.advance(dt,speed*dt,speed,-1);
-    EXPECT_LT(game.snapshot().lateralG,-.65);
-    EXPECT_EQ(game.snapshot().collisions,0);
+TEST(DrivingHandling, HeldKeyboardTurnBuildsGripAndCountersteeringRecovers) {
+    for(double speed:{15.,26.8224,44.704}) {
+        DrivingHandling chassis;
+        for(int i=0;i<120;++i)chassis.advance(1./240,speed,1,DrivingHandling::Input::Keyboard,false);
+        EXPECT_GT(chassis.snapshot().lateralG,.6); // held input still corners decisively
+        for(int i=0;i<144;++i) {
+            chassis.advance(1./240,speed,-1,DrivingHandling::Input::Keyboard,false);
+            EXPECT_LE(std::abs(chassis.snapshot().lateralG),DrivingHandling::RoadGrip);
+        }
+        EXPECT_LT(chassis.snapshot().yawRate,0);EXPECT_LT(chassis.snapshot().lateralG,-.4);
+        for(int i=0;i<480;++i)chassis.advance(1./240,speed,0,DrivingHandling::Input::Keyboard,false);
+        EXPECT_LT(std::abs(chassis.snapshot().yawRate),.001);
+        EXPECT_LT(std::abs(chassis.snapshot().lateralG),.01);
+    }
 }
-TEST(DrivingGame, HighSpeedKeyboardLockDoesNotOverwhelmRoadGrip) {
-    for(double speed:{20.,30.,40.,60.}) {
-        DrivingGame game;
-        for(int i=0;i<24;++i)game.advance(1./120,speed/120,speed,1);
-        EXPECT_GT(game.snapshot().lateralG,.8);
-        EXPECT_LT(game.snapshot().lateralG,1.0);
-        EXPECT_FALSE(game.snapshot().offroad);
-        // The chassis follows its steered wheels, rather than a lagging fake
-        // velocity angle that swings outside the corner after releasing input.
-        EXPECT_GT(drivingAngle(game.snapshot().velocityYaw-game.snapshot().yaw),0);
+TEST(DrivingHandling, ChassisCannotInstantlyRotateVelocityAndIsStableAtLowSpeed) {
+    DrivingHandling highway;highway.advance(1./240,44.704,1,DrivingHandling::Input::Analog,false);
+    EXPECT_LT(std::abs(highway.snapshot().yawRate),.02);
+    for(double speed:{0.,2.,5.,10.,30.,60.}) {
+        DrivingHandling fine,batched;
+        for(int i=0;i<120;++i)fine.advance(1./240,speed,.7,DrivingHandling::Input::Keyboard,false);
+        for(int i=0;i<30;++i)batched.advance(1./60,speed,.7,DrivingHandling::Input::Keyboard,false);
+        EXPECT_NEAR(fine.snapshot().yawRate,batched.snapshot().yawRate,1e-9);
+        EXPECT_NEAR(fine.snapshot().lateralSpeed,batched.snapshot().lateralSpeed,1e-9);
+        EXPECT_LE(std::abs(fine.snapshot().lateralG),DrivingHandling::RoadGrip);
     }
 }
 TEST(DrivingGame, SteeringMotionIsIndependentOfUpdateBatchSize) {

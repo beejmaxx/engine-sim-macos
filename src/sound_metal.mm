@@ -335,6 +335,7 @@ public:
         }
         text("ENGINE SIMULATOR  /  DRIVE",26,24,0,0xD1DDE4);
         text(s.title.data(),24,44,2);text("FOREST CIRCUIT / 3 LAP TIME TRIAL",26,74,0,0xD1DDE4);
+        if(s.carBody==State::CarBody::Concept)text("CONCEPT BODY",26,94,0,Dim);
         button(Library,"ENGINES [E]",s);button(RoadView,"DASH [V]",s);
         char label[96];std::snprintf(label,sizeof(label),"%.0f FPS  /  %s",fps,s.missing ? "AUDIO GAPS" : "AUDIO OK");right(label,1254,68,0,s.missing ? Red : 0xD1DDE4);
         std::snprintf(label,sizeof(label),"%.2f KM",v.vehicleDistance/1000);right(label,1254,89,0,0xD1DDE4);
@@ -352,6 +353,16 @@ public:
         text("CURRENT",154,114,0,Dim);timeLabel(game.lapSeconds);text(label,154,137,2);
         text("BEST",330,114,0,Dim);if(game.bestLap>0)timeLabel(game.bestLap);else std::snprintf(label,sizeof(label),"--:--.--");text(label,330,137,2);
         std::snprintf(label,sizeof(label),"CHECKPOINT %u / 8",game.nextCheckpoint);text(label,26,178,0,0xD1DDE4);
+        if(game.cornerDirection && !game.recovering && !game.finished && !game.wrongWay) {
+            const bool slow=game.speed>game.cornerSpeed+1.5;
+            const bool brakeNow=slow && game.cornerDeceleration>6;
+            const uint32_t cue=brakeNow ? Red : slow ? Yellow : Ink;
+            rounded({495,111,290,92},8,color(0x0C1721,.82f));
+            centered(brakeNow ? "BRAKE NOW" : game.cornerDirection>0 ? "RIGHT TURN AHEAD" : "LEFT TURN AHEAD",640,123,1,cue);
+            std::snprintf(label,sizeof(label),"%.0f MPH  /  %.0f M",game.cornerSpeed/.44704,game.cornerDistance);
+            centered(label,640,148,2,cue);
+            centered(brakeNow ? "Slow before turning" : slow ? "Lift, then brake for the corner" : "Suggested corner speed",640,181,0,0xD1DDE4);
+        }
         if(game.wrongWay || game.recovering || game.finished) {
             rounded({435,165,410,82},8,color(0x0C1721,.85f));
             centered(game.finished ? "TIME TRIAL COMPLETE" : game.recovering ? "RECOVERING CAR" : "WRONG WAY",640,180,2,game.wrongWay ? Red : Ink);
@@ -691,7 +702,7 @@ struct SoundMetalRenderer::Impl {
             [encoder setFragmentTexture:foliage atIndex:1];
             if(current.roadView) {
                 [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:draw.roadEnd];
-                car.draw(encoder,draw.roadScene,draw.roadScene.carPose().wheelDistance,current.engine.brake>0);
+                car.draw(encoder,draw.roadScene,draw.roadScene.carPose().wheelDistance,current.engine.brake>0,current.carBody);
                 [encoder setRenderPipelineState:pipeline];[encoder setVertexBuffer:buffers[slot] offset:0 atIndex:0];
                 [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:draw.roadEnd vertexCount:draw.vertices.size()-draw.roadEnd];
             } else [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:draw.vertices.size()];

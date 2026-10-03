@@ -50,12 +50,17 @@ struct CarMaterial { float4 base,surface,emission; };
 struct CarRaster { float4 position [[position]];float3 world,normal;uint material [[flat]]; };
 vertex CarRaster car_vertex(uint id [[vertex_id]],const device CarVertex *mesh [[buffer(0)]],constant CarUniforms &u [[buffer(1)]]) {
     CarVertex v=mesh[id];float3 p=v.p,n=v.n;
-    if(v.wheel>0 && v.wheel<5) {
-        float3 center=u.wheels[v.wheel].xyz;float c=cos(u.motion.x),s=sin(u.motion.x);
-        p-=center;p.yz=float2(c*p.y-s*p.z,s*p.y+c*p.z);
-        n.yz=float2(c*n.y-s*n.z,s*n.y+c*n.z);
-        if(v.wheel<=2) {
-            c=cos(u.motion.z);s=sin(u.motion.z);
+    uint wheel=v.wheel&7;
+    if(wheel>0 && wheel<5) {
+        float3 center=u.wheels[wheel].xyz;
+        p-=center;
+        if((v.wheel&8)==0) {
+            float angle=u.wheels[wheel].w,c=cos(angle),s=sin(angle);
+            p.yz=float2(c*p.y-s*p.z,s*p.y+c*p.z);
+            n.yz=float2(c*n.y-s*n.z,s*n.y+c*n.z);
+        }
+        if(wheel<=2) {
+            float c=cos(u.motion.z),s=sin(u.motion.z);
             p.xz=float2(c*p.x+s*p.z,-s*p.x+c*p.z);n.xz=float2(c*n.x+s*n.z,-s*n.x+c*n.z);
         }
         p+=center;

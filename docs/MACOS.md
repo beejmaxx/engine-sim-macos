@@ -37,7 +37,9 @@ and uses a short torque cut plus clutch re-engagement during shifts. It reads
 the script's actual gear ratios and vehicle parameters; RPM and speed come from
 the physics simulation. Hysteresis prevents rapid gear hunting. Braking adds
 force to the vehicle's existing drag constraint, and the clutch opens near a
-stop to avoid stalling. The GUI only sends pedal/mode commands.
+stop to avoid stalling. Full brake requests 1.15 g before drag; braking cuts the
+accelerator, inhibits new upshifts, and uses higher downshift thresholds to
+retain engine braking. The GUI only sends pedal/mode commands.
 
 `A` toggles automatic Drive; hold `R` for acceleration and `S` for brakes.
 Keyboard/mouse pedal holds are released on focus loss. The throttle slider
@@ -53,19 +55,24 @@ Backspace starts a new run. Pedals and steering release on focus loss. The game
 reserves arrow keys for driving even when a dashboard slider previously had focus.
 
 `engine-sim-driving` is a device-independent library with a closed Catmull-Rom
-forest circuit in metres and a simple chassis model. It uses bicycle steering,
-speed-sensitive keyboard wheel lock, limited lateral grip, body roll/pitch,
+forest circuit in metres and a simple chassis model. It uses front/rear tyre
+forces, speed-sensitive keyboard steering, limited lateral grip, body roll/pitch,
 and barrier projection/rebound. The engine's vehicle distance and speed supply
 longitudinal movement. The track is 11 m wide, with barriers at 8.5 m from its
 centre. Off-road resistance and impacts add bounded opposing force to the existing
 vehicle drag constraint, so slowing down remains part of the engine/drivetrain
 simulation. This is approximate game handling, not a calibrated tire/suspension model.
 
-Steering has one rack response, with quicker centring and countersteering. Turn
-rate follows the rack directly; there is no additional yaw-rate delay or artificial
-lagging velocity heading. The centre-of-mass bicycle geometry supplies the travel
-angle. Full keyboard lock requests about 0.95 g at speed, instead of exceeding the
-available tire grip by several times. Road grip is capped at 1.12 g; dirt is 0.48 g.
+Keyboard steering builds progressively: a 100 ms tap makes a small correction
+rather than immediately requesting full cornering grip. Release and reversal
+centre the input quickly. One rack response moves the wheels; independent front
+and rear tyre forces then accelerate lateral velocity and chassis yaw inertia.
+There is no artificial travel-heading filter. Parking speeds blend into bicycle
+geometry; integration is bounded at 240 Hz on the game worker. Full sustained
+input requests about 0.92 g at speed; road grip is capped at 1.12 g, dirt at 0.48 g.
+The HUD looks 250 metres ahead for curvature and shows a suggested corner speed,
+distance, and a braking cue with reaction distance. Guidance never applies the
+pedals or steering for normal play.
 
 Eight ordered forward checkpoints validate each lap. Crossing the finish backwards
 or circling near the start cannot award laps. Three laps finish the time trial.
@@ -91,16 +98,20 @@ coordinates. The sun is projected from a fixed world direction, with a 0.53-degr
 angular diameter, and disappears outside the camera view. The same direction
 lights scenery and the car. Straight travel correctly leaves this distant sun
 in place; steering rotates it across the sky.
-`src/sound_car_metal.h` uploads the credited concept-car mesh once
-(162,766 vertices, 213,347 triangles). Metal steers/rolls the wheels and transforms
+`src/sound_car_metal.h` uploads the credited Porsche 911 GT3 mesh
+(168,224 vertices, 234,580 triangles) and concept body before audio starts.
+The `porsche_911_gt3` preset selects the GT3; other presets select the concept
+body and display that fact. Switching only selects cached GPU buffers. Metal
+steers/rolls the wheels with each body's tyre radii, and transforms
 and lights the body. Mipmapped image planes supply foliage; a depth buffer resolves
 the scene. The dashboard uses one draw call; the game uses three (scenery, car, HUD).
 PNG encoding runs on a utility queue after GPU readback. See
 [asset credits](../THIRD_PARTY_NOTICES.md) for sources/licenses.
 
-The game has one circuit, a shared concept-car body, forward driving, and a time
-trial mode. It does not yet have opponents, reverse, a handbrake or car-specific
-bodywork. The game/test pilot is only enabled by validation flags, never normal play.
+The game has one circuit, GT3 and concept bodies, forward driving, and a time
+trial mode. It does not yet have opponents, reverse, a handbrake or matching
+bodies for every engine. The game/test pilot is only enabled by validation flags,
+never normal play.
 
 ## Programmatic checks
 
@@ -237,6 +248,27 @@ stalls preserved driving physics and sound. Sun projection moved across the
 view and disappeared on the circuit; GPU PNGs were inspected without computer
 use. The 65 portable and 72 packaged tests passed, including steering response,
 release, countersteering, frame-independent motion and camera/sun geometry.
+
+With the Porsche GT3 body, progressive keyboard input and tyre-force chassis,
+the final 20-second onscreen CoreAudio check at 2560 x 1600 sustained **60.00 FPS**,
+**0.54 ms CPU / 2.63 ms GPU** per frame, with zero missing audio frames, write
+errors or Metal errors. A **105.12-second CoreAudio game check** completed a clean
+lap, deliberate collision, recovery and acceleration, with zero missing, silent
+or clipped PCM. Forced UI/render stalls still preserved physics and audio.
+The seven-engine native input suite and all **66 portable / 73 packaged tests**
+passed. Models preload into GPU memory before audio starts; the callback and
+audio sample reserve are unchanged.
+The separate real-output audio/control check passed with zero missing, clipped
+or unexpected silent samples and **34.0 ms maximum command-to-mixer response**.
+
+In recorded full-brake runs, the GT3 stopped from approximately 60 mph in
+**30 m / 2.3 s**, compared with about **38 m / 2.9 s** before; near 100 mph it
+stopped in **80 m / 3.7 s**, compared with **101 m / 4.7 s**. Sampling began just
+below each speed threshold; these are game measurements, not manufacturer data.
+A shift-phase clutch regression caught by the real output test was fixed so
+braking to a standstill retains engine idle. A 100 ms steering tap at 100 mph
+produced about **0.22 m** lateral correction over 1.5 seconds, versus **1.08 m**
+with the previous immediate full-steering input.
 
 The smoke harness detects early exits as failures by requiring the completed
 report and result marker:

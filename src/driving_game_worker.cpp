@@ -49,7 +49,8 @@ void DrivingGameWorker::run() {
         if(audio && audio->vehicleTelemetry(next) && next.time>last.time) {
             if(enabled) {
                 const double input=pilot ? game.pilotSteering() : steering.load();
-                game.advance(next.time-last.time,next.distance-last.distance,next.speed,input);
+                game.advance(next.time-last.time,next.distance-last.distance,next.speed,input,
+                    pilot ? DrivingHandling::Input::Analog : DrivingHandling::Input::Keyboard);
             }
             audio->setRoadDeceleration(enabled ? game.snapshot().roadDeceleration : 0);
             last=next;speedTarget=game.pilotSpeed();
