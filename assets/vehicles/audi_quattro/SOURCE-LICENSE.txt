@@ -1,0 +1,7 @@
+This work is based on "Audi Quattro Sport Stock"
+https://sketchfab.com/3d-models/audi-quattro-sport-stock-e81aa698ddba46838c94fe52be81d378
+by Pitstop 3D - Euro (https://sketchfab.com/carfan100)
+License: CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Original glTF asset.extras attribution is preserved in SOURCE-METADATA.json.
+The full CC BY 4.0 license is included in CC-BY-4.0.txt.

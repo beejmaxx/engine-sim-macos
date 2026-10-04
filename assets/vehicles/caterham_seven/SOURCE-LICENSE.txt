@@ -1,0 +1,7 @@
+This work is based on "1980 Caterham Super 7"
+https://sketchfab.com/3d-models/1980-caterham-super-7-c5f0c7c1c6014eeda91b74e592183aee
+by the 86 guy (https://sketchfab.com/the_86_guy)
+License: CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Original glTF asset.extras attribution is preserved in SOURCE-METADATA.json.
+The full CC BY 4.0 license is included in CC-BY-4.0.txt.

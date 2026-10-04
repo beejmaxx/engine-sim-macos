@@ -1,0 +1,8 @@
+{
+  "author": "Martin Trafas (https://sketchfab.com/Bexxie)",
+  "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+  "source": "https://sketchfab.com/3d-models/bmw-e36-m3-762b90efd3dc413cb61c3e3c8097b8ac",
+  "title": "BMW E36 M3",
+  "download": "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-029/762b90efd3dc413cb61c3e3c8097b8ac.glb",
+  "source_sha256": "39347b4b1cff7df44670fe154d5cbe05758ed2d3ef798492b68559882f82f344"
+}

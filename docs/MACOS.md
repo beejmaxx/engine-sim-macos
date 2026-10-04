@@ -70,29 +70,34 @@ WASD steering cannot change Drive or the dyno; `G` toggles Drive in the game.
 Held aliases release independently, so releasing D while right-arrow is held
 does not centre the steering. Dashboard A/D retain their gearbox/dyno actions.
 
-The city is a free-roam map, 1,100 metres across, with seven streets in each
-direction and 49 connected intersections. Main avenues are 36 metres wide;
-other streets are 24 metres wide. `DrivingCity` supplies the same immutable
-geometry to the game, renderer and minimap: 136 building footprints, alleys,
-two open plazas, and a visible perimeter sea wall. There are no circuit barriers
-across intersections. Four tyre contact patches blend road/sidewalk resistance;
-two circles approximate the car body against building rectangles and the boundary.
-Building impacts apply the existing bounded road load and redirect into a scrape.
-Recovery first stops the real vehicle, then places it on a nearby clear street.
+Portside City spans 3,120 × 3,120 metres (9.73 km²), with 19 streets in each
+direction and 361 connected intersections. The 324 blocks contain 1,399 solid
+structures. Eight districts use distinct building styles: downtown, old town,
+garden district, university, northside, east quays, south industrial and ocean
+drive. There are parks, an open stadium, three fuel forecourts, container yards,
+gantry cranes, shopfronts, street signs, courtyards and a beach promenade.
+The ring roads and express avenues are 44 metres wide, major avenues 36 metres,
+and local streets 24 metres. These are level urban avenues with intersections.
 
-City destinations cycle through eight fixed street locations. Entering the green
-marker advances the city-tour counter; there is no lap timer or wrong-way rule.
-The city HUD shows trip distance, district, destination distance, a street/building
-minimap, speed, RPM, gear and drift scores. City/circuit switching releases held
-controls and brakes before changing position; it never reloads the engine.
-The camera, skid buffer and pose interpolation reset when the map changes.
+`DrivingCity` supplies the same immutable footprints to collisions, rendering,
+recovery and the minimap. Collision queries use a static spatial index, avoiding
+scanning the entire city at 120 Hz. Four tyre patches blend road/sidewalk
+resistance; two circles approximate the car body. Impacts retain the existing
+bounded road load and forgiving scrape response. Recovery stops the real vehicle
+before placing it on a nearby clear street.
 
-City buildings, sidewalks, road markings and lamps are generated and cached
-before live audio starts. Metre-scaled facade windows use the existing Metal
-scenery draw with procedural shading. Geometry is culled on the render worker,
-and scenery work never runs on the engine thread or in the audio callback.
-The scene still uses three draws (scenery, car, HUD). Trees and car bodies use
-the same credited assets as the circuit.
+Twelve named destinations guide an optional city tour. Entering the green marker
+advances the counter; free roaming has no time limit or wrong-way rule. The local
+minimap follows the car over a 960-metre square and clamps distant target markers
+to its edge. Map switching still brakes before changing position.
+
+City geometry is generated before audio starts. The renderer uses 160-metre
+spatial cells: nearby cells supply road markings, shops, lamps and detailed
+buildings; distant cells retain road ribbons and building silhouettes out to
+1.6 km. Facade windows, brickwork, metal cladding and sidewalk slabs use procedural
+shading. Street/shop text reuses the cached native font atlas. Scenery construction,
+clipping and culling never run in the engine producer or audio callback. Driving
+still uses three draws: scenery, the selected car and the HUD.
 
 For the city performance benchmark, pass `--city --drive --benchmark PREFIX
 --seconds 20`; the validation driver accelerates along the starting avenue and
@@ -159,28 +164,25 @@ coordinates. The sun is projected from a fixed world direction, with a 0.53-degr
 angular diameter, and disappears outside the camera view. The same direction
 lights scenery and the car. Straight travel correctly leaves this distant sun
 in place; steering rotates it across the sky.
-`src/sound_car_metal.h` uploads the credited Porsche 911 GT3, Supra Mk4,
-Ferrari 458, Corvette C7 and concept meshes before audio starts. Preset-to-body
-selection lives in `include/car_models.h`; both GT3 presets use the Porsche,
-Supra uses the Mk4, Ferrari F136 uses the 458 and LS uses the C7. Other presets
-select the concept body and display that fact. Switching only selects cached
-GPU buffers and textures. Metal steers/rolls the wheels with each body's tyre
-radii, and transforms and lights the body. Brake calipers steer without rolling;
-rear lamps follow the live brake state. The Supra and C7 use mipmapped sRGB
-base-colour texture arrays, created once before the audio session. Old ESC1
-untextured meshes and the new ESC2 material texture descriptors share the same
-render pipeline. Conversion/decompression/simplification happens offline with
-`tools/import_road_cars.py`; the app needs no Python or asset downloads.
+`src/sound_car_metal.h` uploads all 14 credited vehicle models plus the development
+concept fallback before audio starts. The 24 explicit preset/body/menu assignments
+live in `include/car_models.h`; no bundled preset uses the concept. Switching
+selects cached buffers and texture arrays. Wheel radii/pivots follow each mesh,
+and rear lamps follow the live brake state. ESC1 untextured and ESC2 textured
+meshes share a single render pipeline. Offline converters are
+`tools/import_road_cars.py` and `tools/import_car_library.py`; the latter uses
+checked-in per-model import profiles. The app needs no Python, model parsing,
+image conversion or downloads while driving. All models retain separate CC BY
+notices and pinned source provenance; fictional swaps are labelled in the UI.
 Mipmapped image planes supply foliage; a depth buffer resolves
 the scene. The dashboard uses one draw call; the game uses three (scenery, car, HUD).
 PNG encoding runs on a utility queue after GPU readback. See
 [asset credits](../THIRD_PARTY_NOTICES.md) for sources/licenses.
 
-The game has a free-roam city, one circuit, four recognizable car bodies plus a concept,
+The game has a free-roam city, one circuit, 14 real body models for all 24 selections,
 forward/reverse driving, assisted drifting and a circuit time trial mode.
 It does not yet have traffic, pedestrians, opponents,
-a physical handbrake model or matching
-bodies for every engine. The game/test pilot is only enabled by validation flags,
+a physical handbrake model or factory-matched bodies for every engine swap. The game/test pilot is only enabled by validation flags,
 never normal play.
 
 ## Programmatic checks
@@ -501,3 +503,63 @@ See [ENGINES.md](ENGINES.md) for model limitations, including the radial-9 start
 issue at the host's default simulation frequency. Hosted CI validates builds,
 core behavior, scripts, and dummy-device audio adapters; real-device timing and
 native render tests are local checks.
+
+## Expanded city and full body library validation
+
+The 3.12 km Portside map and 14-body library passed 86 portable tests, including
+all 19 streets in both directions, contacts on every solid footprint, independent
+spatial-index comparisons, recovery and a route through the expanded tour.
+The native input suite passed across eight engines, including preset/body
+selection, held controls, focus loss and city/circuit switching.
+
+`--car-gallery DIRECTORY --silent` rendered all 14 bodies with brakes off/on
+(28 PNGs) and checked all 24 preset assignments. Every mesh passed independent
+index, normal, pivot, material and texture validation. These captures test body
+selection/rendering with one stable audio source; they do not claim every
+inherited engine has been runtime-tuned.
+
+On the local M1, the installed app's ten-view city gallery at 2560 × 1600 used
+real CoreAudio / MacBook Air Speakers with the GT3 Sprint engine. It averaged
+60.002 FPS, 1.95 ms CPU rendering and 5.04 ms GPU time, peaking at 56,499 scenery/HUD
+vertices. It reported zero missing audio frames, unexpected silent PCM blocks,
+clipped/invalid samples or Metal errors. The captures show downtown, the coast,
+parks, university, stadium and container port.
+
+Three separate real-device city driving runs passed acceleration, drift,
+braking, reverse and return to forward drive. Each deliberately blocked AppKit
+for 1.2 seconds and separately stopped rendering for 1.2 seconds:
+
+| Engine/body | FPS including render stall | CPU mean | GPU mean | Max mixer callback gap |
+| --- | ---: | ---: | ---: | ---: |
+| GT3 Sprint / Porsche | 54.96 | 2.49 ms | 7.24 ms | 12.32 ms |
+| Audi I5 / Quattro | 54.90 | 3.34 ms | 6.88 ms | 12.16 ms |
+| 412 T2 V12 / Ferrari F1 | 54.97 | 2.11 ms | 6.94 ms | 13.48 ms |
+
+A separate 20-second real-CoreAudio GT3 Sprint drive through the city averaged
+59.90 FPS, 2.57 ms CPU rendering and 7.41 ms GPU time, with zero missing audio
+frames or collisions. It includes the AppKit stall while rendering continues.
+
+All three recorded zero missing frames, silent PCM blocks, clipped/invalid
+samples and Metal errors. Mixer callback intervals are not speaker latency.
+The F1 exposed a test deadline issue: it was entering the brake phase above
+100 mph, so the fixed 1.65-second check ran before its full stop. The validation
+now waits for speed below 0.2 m/s within a 2.2-second deadline and still requires
+running RPM. Its recorded check completed at 1.75 seconds / 2,881 RPM. The
+engine, synthesis, drivetrain, brakes and steering were not changed for this update.
+
+Evidence: `build/audio-validation/full-city/` and
+`build/audio-validation/full-garage/`. Repeat after building/installing:
+
+```sh
+# Ten fixed render viewpoints, with actual audio output:
+dist/engine-sim-sound.app/Contents/MacOS/engine-sim-sound \
+  --city-gallery "$PWD/build/audio-validation/city-gallery" \
+  --preset porsche_911_gt3_sprint \
+  --log "$PWD/build/audio-validation/city-gallery-playback.log"
+
+# Select ferrari_412_t2 or audi_i5 for the other engine/body combinations:
+python3 test/sound_gui_smoke.py --arcade-only --real-audio \
+  --presets porsche_911_gt3_sprint \
+  --binary dist/engine-sim-sound.app/Contents/MacOS/engine-sim-sound \
+  --output build/audio-validation/city-real-audio
+```

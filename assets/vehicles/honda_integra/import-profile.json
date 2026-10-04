@@ -1,0 +1,75 @@
+{
+  "length": 4.525,
+  "forward": [
+    0,
+    0,
+    1
+  ],
+  "tyre_materials": [
+    22,
+    26,
+    34,
+    40
+  ],
+  "wheel_parts": [
+    "/wheel(FL|FR|RL|RR)/"
+  ],
+  "fixed_wheel_parts": [
+    "/brakes(FL|FR|RL|RR)/"
+  ],
+  "materials": {
+    "0": {
+      "base": [
+        0.75,
+        0.74,
+        0.65,
+        1
+      ],
+      "metal": 0.25,
+      "rough": 0.24,
+      "coat": 0.8
+    },
+    "15": {
+      "base": [
+        0.75,
+        0.74,
+        0.65,
+        1
+      ],
+      "metal": 0.25,
+      "rough": 0.24,
+      "coat": 0.8
+    },
+    "1": {
+      "base": [
+        0.03,
+        0.05,
+        0.065,
+        1
+      ],
+      "metal": 0,
+      "rough": 0.08,
+      "glass": 1
+    },
+    "9": {
+      "base": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "rough": 0.2,
+      "brake": 2
+    },
+    "7": {
+      "base": [
+        0.75,
+        0.8,
+        0.85,
+        0.14
+      ],
+      "metal": 0,
+      "rough": 0.15
+    }
+  }
+}

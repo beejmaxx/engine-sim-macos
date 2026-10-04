@@ -1,0 +1,96 @@
+{
+  "length": 4.4,
+  "forward": [
+    0,
+    0,
+    1
+  ],
+  "tyre_materials": [
+    10,
+    11
+  ],
+  "wheel_materials": [
+    9,
+    10,
+    11
+  ],
+  "fixed_wheel_materials": [
+    8
+  ],
+  "skip_parts": [
+    "/rreqp_sub1\\.001_22/"
+  ],
+  "triangle_budget": 150000,
+  "materials": {
+    "4": {
+      "base": [
+        0.56,
+        0.009,
+        0.016,
+        1
+      ],
+      "metal": 0.25,
+      "rough": 0.24,
+      "coat": 0.8
+    },
+    "2": {
+      "metal": 0,
+      "rough": 0.65
+    },
+    "3": {
+      "base": [
+        0.7,
+        0.75,
+        0.8,
+        0.12
+      ],
+      "metal": 0,
+      "rough": 0.15
+    },
+    "7": {
+      "base": [
+        0.34,
+        0.002,
+        0.006,
+        1
+      ],
+      "metal": 0.1,
+      "rough": 0.2,
+      "brake": 1
+    },
+    "9": {
+      "base": [
+        0.4,
+        0.41,
+        0.44,
+        1
+      ],
+      "metal": 0.85,
+      "rough": 0.22
+    },
+    "10": {
+      "metal": 0,
+      "rough": 0.85
+    },
+    "11": {
+      "metal": 0,
+      "rough": 0.85
+    }
+  },
+  "part_materials": [
+    {
+      "pattern": "/Object_19$",
+      "values": {
+        "base": [
+          0.03,
+          0.05,
+          0.065,
+          1
+        ],
+        "metal": 0,
+        "rough": 0.08,
+        "glass": 1
+      }
+    }
+  ]
+}

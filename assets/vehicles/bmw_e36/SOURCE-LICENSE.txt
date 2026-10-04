@@ -1,0 +1,7 @@
+This work is based on "BMW E36 M3"
+https://sketchfab.com/3d-models/bmw-e36-m3-762b90efd3dc413cb61c3e3c8097b8ac
+by Martin Trafas (https://sketchfab.com/Bexxie)
+License: CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Original glTF asset.extras attribution is preserved in SOURCE-METADATA.json.
+The full CC BY 4.0 license is included in CC-BY-4.0.txt.

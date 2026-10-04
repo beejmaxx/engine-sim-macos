@@ -86,6 +86,7 @@ struct State {
     float steering=0;
     DrivingWorld world=DrivingWorld::City;
     bool testPilot=false,testKeyboard=false;
+    int cityPreview=-1; // CLI capture only; never drives the simulation.
     Control hover = None, focus = None, pressed = None;
     bool ready = false, loading = true, ignitionRequested = false, muted = false;
     bool effects = true, uncapped = false, silent = false, active = true, automated = false;

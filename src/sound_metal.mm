@@ -328,7 +328,7 @@ public:
         roadScene.draw(view,
             [&](auto a,auto b,auto c,auto tint,unsigned kind) {
                 for(auto p:{a,b,c})vertices.push_back({{p.p.x,p.p.y},p.uv,tint,kind,p.p.z});
-            });
+            },[&](unsigned char c) {return fonts[1].glyphs[c];});
         roadEnd=vertices.size();uiDepth=0;
         for(int i=0;i<24;++i) {
             quad({0,float(i*5),Width,5},color(0x091321,.45f*(1-i/24.f)));
@@ -344,23 +344,37 @@ public:
         rounded({990,116,266,180},8,color(0x0C1721,.68f));
         const auto &course=roadScene.course();const auto &path=course.points();
         DrivingPoint lo=path.front(),hi=lo;
-        if(city) {lo={-DrivingCity::Extent,-DrivingCity::Extent};hi={DrivingCity::Extent,DrivingCity::Extent};}
+        if(city) {
+            const double cx=std::clamp(game.x,-DrivingCity::Extent+480,DrivingCity::Extent-480);
+            const double cz=std::clamp(game.z,-DrivingCity::Extent+480,DrivingCity::Extent-480);
+            lo={cx-480,cz-480};hi={cx+480,cz+480};
+        }
         else for(const auto &p:path) {lo.x=std::min(lo.x,p.x);lo.z=std::min(lo.z,p.z);hi.x=std::max(hi.x,p.x);hi.z=std::max(hi.z,p.z);}
         const double mapScale=std::min(234/(hi.x-lo.x),148/(hi.z-lo.z));
         auto map=[&](DrivingPoint p) {return simd_float2{1123+float((p.x-(lo.x+hi.x)*.5)*mapScale),206-float((p.z-(lo.z+hi.z)*.5)*mapScale)};};
         if(city) {
+            auto clipped=[&](DrivingPoint p) {return map({std::clamp(p.x,lo.x,hi.x),std::clamp(p.z,lo.z,hi.z)});};
+            for(int x=-DrivingCity::GridRadius;x<DrivingCity::GridRadius;++x)
+              for(int z=-DrivingCity::GridRadius;z<DrivingCity::GridRadius;++z) {
+                if(DrivingCity::lot(x,z)!=DrivingCity::Lot::Park)continue;
+                const auto a=clipped({x*DrivingCity::Block,z*DrivingCity::Block});
+                const auto b=clipped({(x+1)*DrivingCity::Block,(z+1)*DrivingCity::Block});
+                if(b.x>a.x && a.y>b.y)quad({a.x,b.y,b.x-a.x,a.y-b.y},color(0x659264,.45f));
+            }
             for(const auto &building:drivingCity().buildings()) {
-                const auto a=map(building.lo),b=map(building.hi);
-                quad({a.x,b.y,b.x-a.x,a.y-b.y},color(0xA2B4BD,.38f));
+                const auto a=clipped(building.lo),b=clipped(building.hi);
+                if(b.x>a.x && a.y>b.y)quad({a.x,b.y,b.x-a.x,a.y-b.y},color(0xA2B4BD,.38f));
             }
             for(int i=-DrivingCity::GridRadius;i<=DrivingCity::GridRadius;++i) {
-                const double at=i*DrivingCity::Block;const float width=i==0 ? 4 : 2;
-                const auto a=map({at,-DrivingCity::Extent}),b=map({at,DrivingCity::Extent});
-                const auto c=map({-DrivingCity::Extent,at}),d=map({DrivingCity::Extent,at});
-                line(a.x,a.y,b.x,b.y,width,color(Ink,.6f));line(c.x,c.y,d.x,d.y,width,color(Ink,.6f));
+                const double at=i*DrivingCity::Block;
+                const float width=float(DrivingCity::roadHalfWidth(i)*2*mapScale);
+                if(at>=lo.x && at<=hi.x) {const auto a=map({at,lo.z}),b=map({at,hi.z});line(a.x,a.y,b.x,b.y,width,color(Ink,.6f));}
+                if(at>=lo.z && at<=hi.z) {const auto a=map({lo.x,at}),b=map({hi.x,at});line(a.x,a.y,b.x,b.y,width,color(Ink,.6f));}
             }
         } else for(int i=0;i<DrivingCourse::Segments;++i) {const auto a=map(path[i]),b=map(path[i+1]);line(a.x,a.y,b.x,b.y,3,color(Ink,.45f));}
-        const auto checkpoint=map(city ? DrivingCity::Destinations[game.cityStops%DrivingCity::Destinations.size()] : course.at(game.nextCheckpoint*course.length()/8).point);
+        auto target=city ? DrivingCity::Destinations[game.cityStops%DrivingCity::Destinations.size()] : course.at(game.nextCheckpoint*course.length()/8).point;
+        if(city) {target.x=std::clamp(target.x,lo.x,hi.x);target.z=std::clamp(target.z,lo.z,hi.z);}
+        const auto checkpoint=map(target);
         circle(checkpoint.x,checkpoint.y,5,color(city ? 0x65DAB0 : Blue));const auto position=map({game.x,game.z});
         const float heading=float(game.yaw),c=std::cos(heading),si=std::sin(heading);
         triangle({position.x+si*7,position.y-c*7},{position.x-c*4-si*3,position.y-si*4+c*3},
@@ -372,7 +386,7 @@ public:
             text(DrivingCity::district({game.x,game.z}),26,178,0,0xD1DDE4);
             if(!game.recovering) {
                 rounded({495,111,290,92},8,color(0x0C1721,.82f));
-                centered("NEXT CITY SPOT",640,123,1,0x65DAB0);
+                centered(DrivingCity::DestinationNames[game.cityStops%DrivingCity::DestinationNames.size()],640,123,1,0x65DAB0);
                 std::snprintf(label,sizeof(label),"%.0f M",game.destinationDistance);centered(label,640,148,2);
                 centered("Explore or follow the green marker",640,181,0,0xD1DDE4);
             }
@@ -707,7 +721,15 @@ struct SoundMetalRenderer::Impl {
             const EngineVisualLayout empty;
             auto presented=visual;const auto movement=vehicleMotion.advance(dt);
             presented.vehicleDistance=movement.distance;presented.vehicleSpeed=movement.speed;
-            draw.roadScene.update(game.presented(),dt);
+            auto roadPose=game.presented();
+            if(current.automated && current.cityPreview>=0 && size_t(current.cityPreview)<DrivingCity::GalleryViews.size()) {
+                const auto view=DrivingCity::GalleryViews[current.cityPreview];
+                roadPose.x=view.point.x;roadPose.z=view.point.z;roadPose.yaw=view.yaw;
+                roadPose.speed=0;roadPose.steer=0;roadPose.world=DrivingWorld::City;
+                roadPose.recoveries=100+current.cityPreview;
+                roadPose.destinationDistance=drivingLength(DrivingCity::Destinations[roadPose.cityStops%DrivingCity::Destinations.size()]-view.point);
+            }
+            draw.roadScene.update(roadPose,dt);
             const auto sun=draw.roadScene.sunPosition(Width,Height);
             sunX=sun.x;sunY=sun.y;sunVisible=sun.visible;
             draw.draw(current,audio ? audio->visualLayout() : empty,presented,dt,fps,cpu,gpu,rpm);

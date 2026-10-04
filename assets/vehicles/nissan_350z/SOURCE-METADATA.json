@@ -1,0 +1,8 @@
+{
+  "author": "David_Holiday (https://sketchfab.com/David_Holiday)",
+  "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+  "source": "https://sketchfab.com/3d-models/nissan-350z-18c081f765854d249bb8dc580a1e9f7c",
+  "title": "Nissan 350z",
+  "download": "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-148/18c081f765854d249bb8dc580a1e9f7c.glb",
+  "source_sha256": "8e9f7e889f1f18e19d724e6df2b62dfe8f746cf6003df3df6422720f567ace85"
+}

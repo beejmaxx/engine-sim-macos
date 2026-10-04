@@ -1,0 +1,7 @@
+This work is based on "Low Poly Lexus LFA"
+https://sketchfab.com/3d-models/low-poly-lexus-lfa-56c3a62e5bb645d8afaf1dcfa4b665ea
+by yokatann (https://sketchfab.com/yokatann)
+License: CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Original glTF asset.extras attribution is preserved in SOURCE-METADATA.json.
+The full CC BY 4.0 license is included in CC-BY-4.0.txt.

@@ -1,0 +1,7 @@
+This work is based on "Nissan 350z"
+https://sketchfab.com/3d-models/nissan-350z-18c081f765854d249bb8dc580a1e9f7c
+by David_Holiday (https://sketchfab.com/David_Holiday)
+License: CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Original glTF asset.extras attribution is preserved in SOURCE-METADATA.json.
+The full CC BY 4.0 license is included in CC-BY-4.0.txt.

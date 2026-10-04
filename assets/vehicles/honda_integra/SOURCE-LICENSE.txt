@@ -1,0 +1,7 @@
+This work is based on "Honda Integra (DB8) Type-R"
+https://sketchfab.com/3d-models/honda-integra-db8-type-r-06f0eba84e9745e9aec41a985ccac915
+by Myedsu (https://sketchfab.com/myedsu)
+License: CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Original glTF asset.extras attribution is preserved in SOURCE-METADATA.json.
+The full CC BY 4.0 license is included in CC-BY-4.0.txt.

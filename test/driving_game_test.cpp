@@ -241,8 +241,9 @@ TEST(DrivingCamera, SunRotatesWithViewAndDisappearsBehindCamera) {
 }
 TEST(DrivingCity, StreetsIntersectionsAndPlazasAreOpenForDriving) {
     const auto &city=drivingCity();
-    ASSERT_GT(city.buildings().size(),100u);
-    for(int i=-3;i<=3;++i)for(double along=-510;along<=510;along+=3) {
+    ASSERT_GT(city.buildings().size(),1000u);
+    for(int i=-DrivingCity::GridRadius;i<=DrivingCity::GridRadius;++i)
+      for(double along=-DrivingCity::Extent+4;along<=DrivingCity::Extent-4;along+=3) {
         for(auto p:{DrivingPoint{i*160.+5,along},DrivingPoint{along,i*160.-5}}) {
             EXPECT_FALSE(city.occupied(p,2.3));
             EXPECT_LT(city.roadDistance(p),0);
@@ -263,9 +264,35 @@ TEST(DrivingCity, BodyContactsResolveAtBuildingEdgesAndWorldBoundary) {
         EXPECT_FALSE(city.occupied(p+forward*1.05,1.11));
         EXPECT_FALSE(city.occupied(p-forward*1.05,1.11));
     }
-    for(auto p:{DrivingPoint{551,0},DrivingPoint{0,-551},DrivingPoint{551,551}}) {
+    const double edge=DrivingCity::Extent;
+    for(auto p:{DrivingPoint{edge+1,0},DrivingPoint{0,-edge-1},DrivingPoint{edge+1,edge+1}}) {
         EXPECT_TRUE(city.constrain(p,0).hit);
-        EXPECT_LE(std::abs(p.x),550);EXPECT_LE(std::abs(p.z),550);
+        EXPECT_LE(std::abs(p.x),edge);EXPECT_LE(std::abs(p.z),edge);
+    }
+}
+TEST(DrivingCity, ExpandedDistrictsAndTourHaveAccessibleDistinctDestinations) {
+    const auto &city=drivingCity();
+    EXPECT_GE(DrivingCity::Extent*2,3000);
+    EXPECT_EQ(DrivingCity::Destinations.size(),DrivingCity::DestinationNames.size());
+    std::array<bool,8> zones{};
+    for(int x=-DrivingCity::GridRadius;x<DrivingCity::GridRadius;++x)
+      for(int z=-DrivingCity::GridRadius;z<DrivingCity::GridRadius;++z)
+        zones[size_t(DrivingCity::zone({x*160.+80,z*160.+80}))]=true;
+    for(bool found:zones)EXPECT_TRUE(found);
+    for(const auto &p:DrivingCity::Destinations) {
+        EXPECT_FALSE(city.occupied(p,3));EXPECT_LT(city.roadDistance(p),-3);
+    }
+}
+TEST(DrivingCity, SpatialQueriesMatchIndependentFootprintChecksAcrossMap) {
+    const auto &city=drivingCity();
+    for(double x=-1570;x<1570;x+=23.17)for(double z=-1570;z<1570;z+=29.61) {
+        const DrivingPoint p{x,z};constexpr double radius=2.3;
+        bool expected=std::abs(x)+radius>DrivingCity::Extent || std::abs(z)+radius>DrivingCity::Extent;
+        for(const auto &b:city.buildings()) {
+            const double dx=std::max({b.lo.x-x,0.,x-b.hi.x}),dz=std::max({b.lo.z-z,0.,z-b.hi.z});
+            if(dx*dx+dz*dz<=radius*radius) {expected=true;break;}
+        }
+        EXPECT_EQ(city.occupied(p,radius),expected) << x << ',' << z;
     }
 }
 TEST(DrivingCity, RecoveryFindsNearbyStreetOutsideAllBuildings) {
@@ -294,10 +321,10 @@ TEST(DrivingGame, CityFreeRoamVisitsSpotsAndAllowsReverseWithoutLapRules) {
 }
 TEST(DrivingGame, CityIntersectionsAllowTurnsOntoConnectingStreets) {
     DrivingGame game(DrivingWorld::City);
-    const DrivingPoint route[]={{5,-160},{20,-165},{145,-165},{165,-145},{165,-5},
-        {185,-5},{295,-5},{315,15},{315,140},{315,165},{290,165},{25,165},{5,145},{5,-350}};
+    const DrivingPoint route[]={{5,-160},{20,-165},{145,-165},{165,-145},{165,155},
+        {185,155},{465,155},{485,175},{485,485},{465,485},{15,485},{-5,465},{-5,-350}};
     size_t waypoint=0;double farthest=0;
-    for(int i=0;i<24000 && waypoint<std::size(route);++i) {
+    for(int i=0;i<36000 && waypoint<std::size(route);++i) {
         const auto &p=game.snapshot();const auto delta=route[waypoint]-DrivingPoint{p.x,p.z};
         const double d=drivingLength(delta);if(d<7){++waypoint;continue;}
         const double bearing=drivingAngle(std::atan2(delta.x,delta.z)-p.yaw);
@@ -322,8 +349,14 @@ TEST(DrivingGame, MapSwitchBrakesBeforeMovingToTheOtherWorld) {
 }
 TEST(DrivingGame, CityBuildingImpactAddsLoadAndRecoveryReturnsToStreet) {
     DrivingGame game(DrivingWorld::City);bool impactLoad=false;
-    for(int i=0;i<480;++i) {
-        game.advance(1./120,15./120,15,1);
+    // Aim at a solid footprint, not the old map's now-open fuel forecourt.
+    const DrivingPoint target{200,-370};
+    for(int i=0;i<2400;++i) {
+        const auto pose=game.snapshot();
+        const auto delta=target-DrivingPoint{pose.x,pose.z};
+        const double bearing=drivingAngle(std::atan2(delta.x,delta.z)-pose.yaw);
+        const double curve=2*std::sin(bearing)/12;
+        game.advance(1./120,15./120,15,std::clamp(curve/DrivingHandling::maximumCurvature(15),-1.,1.));
         const auto &p=game.snapshot();
         EXPECT_FALSE(drivingCity().occupied({p.x,p.z}));
         impactLoad |= p.collisions>0 && p.roadDeceleration>5;

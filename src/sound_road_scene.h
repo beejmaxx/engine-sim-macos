@@ -16,11 +16,16 @@ class SoundRoadScene {
     struct Face {V3 a,b,c;simd_float4 tint;unsigned kind;std::array<simd_float2,3> uv{};};
     struct ClipVertex {V3 p;simd_float2 uv;};
     struct Tree {float x,z,height,shade;};
+    struct Sign {V3 at,across;float scale;const char *text;unsigned color;};
+    struct CityChunk {std::vector<Face> detail,skyline;};
+    static constexpr int CityCells=2*DrivingCity::GridRadius+2;
+    std::array<CityChunk,CityCells*CityCells> cityChunks;
+    std::vector<Sign> signs;
     struct Skid {V3 a,b,c,d;double time;};
     std::array<Skid,512> skids{};
     size_t skidWrite=0,skidCount=0;
     DrivingSnapshot skidPose{};
-    std::vector<Face> faces,world,cityWorld;
+    std::vector<Face> faces,world;
     std::vector<Tree> trees,cityTrees;
     DrivingCourse track;
     DrivingSnapshot vehicle{};
@@ -50,85 +55,15 @@ class SoundRoadScene {
     void ground(float x0,float z0,float x1,float z1,float y,unsigned color,unsigned kind=3) {
         quad({x0,y,z0},{x1,y,z0},{x1,y,z1},{x0,y,z1},color,false,kind);
     }
-    void facade(V3 a,V3 b,V3 c,V3 d,unsigned color,bool glass) {
-        quad(a,b,c,d,color,true,glass ? 8 : 7);
+    void facade(V3 a,V3 b,V3 c,V3 d,unsigned color,bool glass,unsigned kind=0) {
+        quad(a,b,c,d,color,true,kind ? kind : glass ? 8 : 7);
         const bool alongX=std::abs(b.x-a.x)>std::abs(b.z-a.z);
         for(size_t i=faces.size()-2;i<faces.size();++i) {
             auto &face=faces[i];const V3 corners[]={face.a,face.b,face.c};
             for(int k=0;k<3;++k)face.uv[k]={alongX ? corners[k].x : corners[k].z,corners[k].y};
         }
     }
-    void buildCity() {
-        constexpr float block=DrivingCity::Block,edge=DrivingCity::Extent;
-        // Short road patches make culling local even on a kilometre-long avenue.
-        for(int i=-DrivingCity::GridRadius;i<=DrivingCity::GridRadius;++i) {
-            const float at=i*block,w=DrivingCity::roadHalfWidth(i);
-            for(float s=-edge;s<edge;s+=16) {
-                const float end=std::min(edge,s+16);
-                ground(at-w,s,at+w,end,.006f,0x353E47,4);
-                ground(s,at-w,end,at+w,.006f,0x353E47,4);
-                const int cross=int(std::round((s+4)/block));
-                if(std::abs(s+4-cross*block)>DrivingCity::roadHalfWidth(cross)+8) {
-                    for(float offset:{-.25f,.25f}) {
-                        ground(at+offset-.045f,s,at+offset+.045f,s+8,.017f,0xDAC479);
-                        ground(s,at+offset-.045f,s+8,at+offset+.045f,.017f,0xDAC479);
-                    }
-                    for(float lane:{-6.f,6.f}) {
-                        ground(at+lane-.055f,s,at+lane+.055f,s+5,.018f,0xDCE1DD);
-                        ground(s,at+lane-.055f,s+5,at+lane+.055f,.018f,0xDCE1DD);
-                    }
-                }
-            }
-        }
-        for(int x=-3;x<3;++x)for(int z=-3;z<3;++z) {
-            const float x0=x*block+DrivingCity::roadHalfWidth(x),z0=z*block+DrivingCity::roadHalfWidth(z);
-            const float x1=(x+1)*block-DrivingCity::roadHalfWidth(x+1),z1=(z+1)*block-DrivingCity::roadHalfWidth(z+1);
-            if(DrivingCity::plaza(x,z)) {
-                ground(x0,z0,x1,z1,.009f,0x626B70,4);
-                for(float a=x0+15;a<x1-15;a+=4) {
-                    ground(a,z0+12,a+.12f,z0+22,.018f,0xCDD2CC);
-                    ground(a,z1-22,a+.12f,z1-12,.018f,0xCDD2CC);
-                }
-            } else box({x0,.0f,z0},{x1,.14f,z1},0xAEB3B0);
-            for(auto p:{V3{x0+3,0,z0+3},V3{x1-3,0,z1-3}})
-                cityTrees.push_back({p.x,p.z,6.5f,.92f});
-        }
-        for(const auto &b:drivingCity().buildings()) {
-            const float x=b.lo.x,z=b.lo.z,X=b.hi.x,Z=b.hi.z,h=b.height;
-            const unsigned tint=b.glass ? 0x79929E : b.color;
-            const V3 a{x,.14f,z},c{X,h,z},e{x,.14f,Z},g{X,h,Z};
-            // World-space facade coordinates give cached buildings metre-sized
-            // windows without thousands of extra window polygons or textures.
-            facade(a,{X,.14f,z},c,{x,h,z},tint,b.glass);
-            facade({X,.14f,Z},e,{x,h,Z},g,tint,b.glass);
-            facade(e,a,{x,h,z},{x,h,Z},tint,b.glass);
-            facade({X,.14f,z},{X,.14f,Z},g,c,tint,b.glass);
-            box({x-.2f,h,z-.2f},{X+.2f,h+.5f,Z+.2f},0xCED1CC);
-            const float mx=(x+X)*.5f,mz=(z+Z)*.5f;
-            box({mx-4,h+.5f,mz-2},{mx+4,h+1.5f,mz+2},0x65747C);
-            box({x,2.8f,z-.45f},{X,3.15f,z},b.glass ? 0x546D7B : 0x5D7778);
-            box({x,.15f,z-.12f},{X,1.1f,z},0x6E777D);
-        }
-        for(int x=-3;x<=3;++x)for(int z=-3;z<=3;++z) {
-            const float xx=x*block,zz=z*block,wx=DrivingCity::roadHalfWidth(x),wz=DrivingCity::roadHalfWidth(z);
-            for(float side:{-1.f,1.f})for(float stripe=-wx+2;stripe<wx-1;stripe+=2.4f)
-                ground(xx+stripe,zz+side*(wz+2),xx+stripe+1.1f,zz+side*(wz+2)+3,.019f,0xD8DED6);
-            for(float side:{-1.f,1.f})for(float stripe=-wz+2;stripe<wz-1;stripe+=2.4f)
-                ground(xx+side*(wx+2),zz+stripe,xx+side*(wx+2)+3,zz+stripe+1.1f,.019f,0xD8DED6);
-            const float px=xx+wx+2,pz=zz+wz+2;
-            box({px,.14f,pz},{px+.12f,6.8f,pz+.12f},0x677982);
-            box({px-2.2f,6.7f,pz},{px+.12f,6.86f,pz+.12f},0x677982);
-            box({px-2.2f,6.55f,pz-.2f},{px-1.1f,6.75f,pz+.3f},0xDAE0C9);
-        }
-        // Visible sea wall matches the playable boundary, leaving a broad
-        // promenade outside the outer streets for recovering from a fast turn.
-        for(float s=-edge;s<edge;s+=16)for(float side:{-1.f,1.f}) {
-            const float wall=side*(edge+1),end=std::min(edge,s+16);
-            box({s,0,wall-.5f},{end,1.1f,wall+.5f},0xADB9B9);
-            box({wall-.5f,0,s},{wall+.5f,1.1f,end},0xADB9B9);
-        }
-        cityWorld=std::move(faces);faces.clear();faces.reserve(14000);
-    }
+#include "sound_city_geometry.inl"
     static V3 point(DrivingPoint p,float height=0) {return {float(p.x),height,float(p.z)};}
     void ribbon(double s0,double s1,double offset0,double offset1,float height,unsigned color,unsigned kind=3) {
         const auto a=track.at(s0),b=track.at(s1);
@@ -196,7 +131,7 @@ class SoundRoadScene {
                 const auto p=camera+right*near[i].x+up*near[i].y+forward*near[i].z;
                 polygon[i]={{viewport.x+viewport.w*.5f+near[i].x/near[i].z*viewport.h,
                     viewport.y+viewport.h*.48f-near[i].y/near[i].z*viewport.h,1-.25f/near[i].z},
-                    face.kind>=6 && face.kind<=8 ? nearUv[i]/near[i].z : simd_float2{p.x/near[i].z,p.z/near[i].z}};
+                    ((face.kind>=6 && face.kind<=8) || face.kind==10 || face.kind==12 || face.kind==13) ? nearUv[i]/near[i].z : simd_float2{p.x/near[i].z,p.z/near[i].z}};
             }
             for(int edge=0;edge<4 && n>=3;++edge) {
                 auto inside=[&](V3 p) {switch(edge) {case 0:return p.x-viewport.x;case 1:return viewport.x+viewport.w-p.x;
@@ -257,11 +192,11 @@ public:
     simd_float4 cameraRight() const {return {right.x,right.y,right.z,0};}
     simd_float4 cameraUp() const {return {up.x,up.y,up.z,0};}
     simd_float4 cameraForward() const {return {forward.x,forward.y,forward.z,0};}
-    template<class Emit> void draw(sound_ui::UiRect area,Emit emit) {
+    template<class Emit,class Glyph> void draw(sound_ui::UiRect area,Emit emit,Glyph glyph) {
         viewport=area;faces.clear();
         const bool city=vehicle.world==DrivingWorld::City;
         if(city) {
-            ground(-1800,-1800,1800,1800,-.25f,0x477E8E,9);paint(emit);
+            ground(-7000,-7000,7000,7000,-.35f,0x397B8F,9);paint(emit);
             ground(-DrivingCity::Extent,-DrivingCity::Extent,DrivingCity::Extent,DrivingCity::Extent,0,0x677669,5);paint(emit);
         } else {
         quad({-950,-.05f,-950},{950,-.05f,-950},{950,-.05f,950},{-950,-.05f,950},0x53634A,false,5);paint(emit);
@@ -274,13 +209,39 @@ public:
         }
         paint(emit);
         }
-        for(const auto &face:city ? cityWorld : world) {
+        if(city) {
+            for(int x=0;x<CityCells;++x)for(int z=0;z<CityCells;++z) {
+                const V3 center{(x-DrivingCity::GridRadius-.5f)*float(DrivingCity::Block),0,
+                    (z-DrivingCity::GridRadius-.5f)*float(DrivingCity::Block)};
+                const V3 relative=center-V3{camera.x,0,camera.z};
+                const float distance=simd_length(relative),ahead=simd_dot(relative,forward),side=std::abs(simd_dot(relative,right));
+                if(distance>1600 || ahead<-190 || side>std::max(0.f,ahead)*.95f+200)continue;
+                const auto &chunk=cityChunks[x*CityCells+z];
+                const auto &source=distance<520 ? chunk.detail : chunk.skyline;
+                faces.insert(faces.end(),source.begin(),source.end());
+            }
+        } else for(const auto &face:world) {
             const auto center=(face.a+face.b+face.c)/3;
-            const float radius=city ? 390 : 240;
-            // Large building faces can straddle the camera even with their
-            // centre behind it. The clipper, not centre culling, rejects them.
-            if(simd_length_squared(center-camera)>radius*radius || simd_dot(center-camera,forward)<(city ? -160 : -12))continue;
+            if(simd_length_squared(center-camera)>240*240 || simd_dot(center-camera,forward)<-12)continue;
             faces.push_back(face);
+        }
+        paint(emit);
+        if(city)for(const auto &sign:signs) {
+            const V3 relative=sign.at-camera;
+            if(simd_length_squared(relative)>220*220 || simd_dot(relative,forward)<-10 ||
+               simd_dot(-relative,simd_cross(V3{0,1,0},sign.across))<0)continue;
+            V3 pen=sign.at;
+            for(const char *c=sign.text;*c;++c) {
+                const auto g=glyph(*c);
+                if(g.w) {
+                    const auto a=pen+sign.across*(g.left*sign.scale)+V3{0,g.bottom*sign.scale,0};
+                    const auto b=a+sign.across*(g.w*sign.scale),d=a+V3{0,g.h*sign.scale,0},cc=b+(d-a);
+                    const auto tint=rgb(sign.color);
+                    faces.push_back({a,b,cc,tint,10,{{{g.u0,g.v0},{g.u1,g.v0},{g.u1,g.v1}}}});
+                    faces.push_back({a,cc,d,tint,10,{{{g.u0,g.v0},{g.u1,g.v1},{g.u0,g.v1}}}});
+                }
+                pen+=sign.across*(g.advance*sign.scale);
+            }
         }
         paint(emit);
         for(const auto &t:city ? cityTrees : trees) {

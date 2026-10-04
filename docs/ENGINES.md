@@ -22,20 +22,35 @@ In the game, press **E** and select one of these entries. Changing the engine
 also selects its cached body; no model downloads or texture loading happen
 while driving. The HUD identifies the active body.
 
-| Menu entry | Preset ID | Body / asset credits |
+| Vehicle body | Engine selections | Asset credits |
 | --- | --- | --- |
-| Toyota Supra Mk4 / 2JZ | `supra` | [1998 Supra Mk4](../assets/vehicles/supra_mk4/README.md), pearl white |
-| Ferrari 458 Italia / F136 V8 | `ferrari_f136_v8` | [Open-roof 458](../assets/vehicles/ferrari_458/README.md), red |
-| Chevrolet Corvette C7 / LS V8 swap | `ls` | [Corvette C7](../assets/vehicles/corvette_c7/README.md), blue |
-| Porsche 911 GT3 / Porsche GT3 Sprint | `porsche_911_gt3` / `porsche_911_gt3_sprint` | [911 GT3](../assets/vehicles/porsche_gt3/README.md) |
-| Other engines | All other IDs | [Concept car](../assets/vehicles/concept/README.md) |
+| Toyota Supra Mk4 | 2JZ | [BHP3D](../assets/vehicles/supra_mk4/README.md) |
+| Chevrolet Corvette C7 | LS V8 swap | [Martin Trafas](../assets/vehicles/corvette_c7/README.md) |
+| Porsche 911 GT3 | GT3 4.0 and GT3 Sprint | [ChevroletSS](../assets/vehicles/porsche_gt3/README.md) |
+| Ferrari 458 Italia, open roof | F136 V8 | [vicent091036](../assets/vehicles/ferrari_458/README.md) |
+| BMW E36 M3 | M52B28 swap | [Martin Trafas](../assets/vehicles/bmw_e36/README.md) |
+| Audi Quattro | Audi inline-five | [Pitstop3D-Euro](../assets/vehicles/audi_quattro/README.md) |
+| Honda Integra DB8 Type R | B18C5 | [Myedsu](../assets/vehicles/honda_integra/README.md) |
+| Subaru Impreza WRX STI | Three EJ25 exhaust variants | [GalaxyCarShowroom](../assets/vehicles/subaru_wrx_sti/README.md) |
+| Lexus LFA | LFA V10 | [yokatann](../assets/vehicles/lexus_lfa/README.md) |
+| Porsche 930 Turbo | Carrera 3.2 swap | [Karol Miklas](../assets/vehicles/porsche_930/README.md) |
+| Caterham Super Seven | Hayabusa, Harley, Honda TRX520 and Kohler swaps | [the86guy](../assets/vehicles/caterham_seven/README.md) |
+| Ford hot-rod pickup | Merlin V12, radial-five and radial-nine swaps | [Fredrik Johansen](../assets/vehicles/ford_hotrod/README.md) |
+| Nissan 350Z | Three generic V6 examples | [David_Holiday](../assets/vehicles/nissan_350z/README.md) |
+| Ferrari F1 2019 | 412 T2 V12 swap | [valvetin](../assets/vehicles/ferrari_f1_2019/README.md) |
 
-The Corvette is explicitly an LS V8 swap in the game; its stock C7 drivetrain
-is not simulated. The 458 source is titled “Ferrari 458 Italia” by its author
-and depicts an open-roof car. Bodies are approximately metre-scaled, with
-separate wheels, materials and brake lamps. They do not change the existing
-sound models, transmissions or arcade handling. These visual assets are
-separately licensed under CC BY 4.0, with author notices in each asset directory.
+All 24 library entries have explicit assignments in `include/car_models.h`.
+The development concept asset remains packaged as an unknown-ID fallback;
+none of the bundled presets selects it. Menu labels and the driving HUD identify
+body/engine swaps, including the 2019 F1 body with the 1995 V12 sound model.
+These are fictional game combinations, not factory specifications. The LFA
+source uses a lower-detail mesh than the other cars, with smoothed lighting normals.
+
+Bodies are approximately metre-scaled, with separate wheel pivots, paint,
+glass, trim and brake lamps where applicable. They do not change engine sound,
+transmissions or arcade handling. All imported visual assets retain CC BY 4.0,
+with author notices, source hashes, pinned download links and conversion profiles
+in each asset directory. The game requires no model downloads.
 
 ## Porsche approximations
 

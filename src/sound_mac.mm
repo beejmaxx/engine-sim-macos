@@ -22,7 +22,7 @@ struct Options {
     DrivingWorld world=DrivingWorld::City;
     bool worldExplicit=false;
     std::filesystem::path assets;
-    std::string log, verify, driveVerify, benchmark, uiTest, gameTest, arcadeTest;
+    std::string log, verify, driveVerify, benchmark, uiTest, gameTest, arcadeTest, carGallery, cityGallery;
     int preset=0, stall=1000;
     double seconds=12;
     bool play=false, drive=false, roadView=false, uncapped=false, offscreen=false, effects=true, silent=false, muted=false;
@@ -99,6 +99,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
 - (void)steer:(BOOL)down right:(BOOL)right source:(unsigned)source;
 - (void)gameTest:(double)t;
 - (void)arcadeTest:(double)t;
+- (void)carGallery:(double)t;
+- (void)cityGallery:(double)t;
 - (NSMenu *)engineMenu;
 - (State)currentState;
 - (int)exitCode;
@@ -255,7 +257,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         _state.volume=SoundSession::DefaultVolume;
         _state.muted=options.muted;
         _state.silent=std::string(SDL_GetCurrentAudioDriver())=="dummy";
-        _state.automated=!options.uiTest.empty() || !options.benchmark.empty() || !options.gameTest.empty() || !options.arcadeTest.empty();
+        _state.automated=!options.uiTest.empty() || !options.benchmark.empty() || !options.gameTest.empty() || !options.arcadeTest.empty() || !options.carGallery.empty() || !options.cityGallery.empty();
         _state.testPilot=options.drive && !options.benchmark.empty() && _state.world==DrivingWorld::Circuit;
         if(!options.log.empty())_log.open(options.log);
     }
@@ -334,9 +336,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     for(size_t i=0;i<presets.size();++i) {
         if(i==2)[menu addItem:NSMenuItem.separatorItem];
         std::string title=presets[i].title;
-        if(presets[i].id=="ls")title="Chevrolet Corvette C7 / LS V8 swap";
-        else if(presets[i].id=="ferrari_f136_v8")title="Ferrari 458 Italia / F136 V8";
-        else if(presets[i].id=="supra")title="Toyota Supra Mk4 / 2JZ";
+        if(const auto *selection=carSelectionForPreset(presets[i].id))title=selection->menu;
         NSMenuItem *item=[[NSMenuItem alloc] initWithTitle:[NSString stringWithUTF8String:title.c_str()]
             action:@selector(selectEngine:) keyEquivalent:@""];
         item.target=self;item.tag=i;item.state=int(i)==_state.preset ? NSControlStateValueOn : NSControlStateValueOff;
@@ -599,6 +599,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
                 <<" missing="<<audio.silenceFrames<<" frames="<<metrics.frames<<std::endl;
         }
         if(!_options.uiTest.empty())[self runTests:elapsed];
+        else if(!_options.carGallery.empty())[self carGallery:elapsed];
+        else if(!_options.cityGallery.empty())[self cityGallery:elapsed];
         else if(!_options.arcadeTest.empty())[self arcadeTest:elapsed];
         else if(!_options.gameTest.empty())[self gameTest:elapsed];
         else if(!_options.benchmark.empty())[self benchmark:elapsed];
@@ -615,12 +617,17 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     struct TestEngine { const char *id; int cylinders; State::CarBody body=State::CarBody::Concept; };
     static constexpr TestEngine testEngines[]={
         {"supra",6,State::CarBody::SupraMk4},{"ls",8,State::CarBody::CorvetteC7},
-        {"ferrari_f136_v8",8,State::CarBody::Ferrari458},{"ferrari_412_t2",12},
+        {"ferrari_f136_v8",8,State::CarBody::Ferrari458},{"ferrari_412_t2",12,State::CarBody::FerrariF1},
         {"porsche_911_gt3",6,State::CarBody::PorscheGt3},{"porsche_911_gt3_sprint",6,State::CarBody::PorscheGt3},
-        {"porsche_911_carrera_32",6},{"bmw_m52b28",6}
+        {"porsche_911_carrera_32",6,State::CarBody::Porsche930},{"bmw_m52b28",6,State::CarBody::BmwE36}
     };
     auto s=_session->snapshot();
-    if(_testStage==0 && t>.25) { [_view testClick:Start];++_testStage; }
+    if(_testStage==0 && t>.25) {
+        bool complete=CarSelections.size()==SoundSession::presets().size();
+        for(const auto &preset:SoundSession::presets())complete=complete && carBodyForPreset(preset.id)!=CarBody::Concept;
+        [self check:complete name:"all_24_presets_have_real_bodies"];
+        [_view testClick:Start];++_testStage;
+    }
     else if(_testStage==1 && t>3.5) {
         [self check:s.ignition && !s.cranking && s.rpm>200 name:"mouse_start"];
         [_view testSlider:Throttle fraction:std::sqrt(_session->preset().revThrottle)];++_testStage;
@@ -784,6 +791,88 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         }
     }
 }
+- (void)cityGallery:(double)t {
+    if(t<3)return;
+    if(!_benchMeasured) {
+        _benchMeasured=true;_benchAt=now();_benchAudio=_session->statistics();_benchMetrics=_renderer.metrics();
+        _testPreset=0;std::filesystem::create_directories(_options.cityGallery);
+        [self check:_gameAudio.attach(_session->device()) name:"city_pcm_probe_attached"];
+    }
+    if(size_t(_testPreset)<DrivingCity::GalleryViews.size()) {
+        if(_testStage==0) {
+            _state.cityPreview=_testPreset;_gamePhaseAt=now();_testStage=1;
+        } else if(_testStage==1 && now()-_gamePhaseAt>1.5) {
+            _renderer.capture((_options.cityGallery+"/view-"+std::to_string(_testPreset)+".png").c_str());
+            ++_expectedCaptures;_testStage=2;
+        } else if(_testStage==2 && _renderer.captures()==_expectedCaptures) {
+            std::cout<<"CITY_CAPTURE="<<_testPreset<<std::endl;++_testPreset;_testStage=0;
+        }
+        if(t<90)return;
+        [self check:false name:"city_gallery_finished_before_timeout"];
+    }
+    _gameAudio.detach();const auto audio=_session->statistics();const auto m=_renderer.metrics();
+    const auto frames=m.frames-_benchMetrics.frames;const double seconds=now()-_benchAt;
+    [self check:_renderer.captures()==DrivingCity::GalleryViews.size() name:"all_city_views_written"];
+    [self check:audio.silenceFrames==_benchAudio.silenceFrames && audio.writeErrors==0 name:"city_no_missing_audio_frames"];
+    [self check:_gameAudio.frames>44100 && _gameAudio.silentBlocks==0 && _gameAudio.invalidSamples==0 && _gameAudio.clippedSamples==0 name:"city_continuous_valid_pcm"];
+    [self check:m.errors==0 name:"city_no_metal_errors"];
+    std::ofstream report(_options.cityGallery+"/result.json");
+    report<<"{\"result\":\""<<(_passed ? "PASS" : "FAIL")<<"\",\"views\":"<<_renderer.captures()
+        <<",\"buildings\":"<<drivingCity().buildings().size()<<",\"width_m\":"<<DrivingCity::Extent*2
+        <<",\"fps\":"<<frames/seconds<<",\"cpu_ms\":"<<(m.cpuNs-_benchMetrics.cpuNs)/1e6/std::max(uint64_t(1),frames)
+        <<",\"gpu_ms\":"<<(m.gpuNs-_benchMetrics.gpuNs)/1e6/std::max(uint64_t(1),frames)
+        <<",\"peak_vertices\":"<<m.peakVertices<<",\"missing_audio_frames\":"<<audio.silenceFrames-_benchAudio.silenceFrames
+        <<",\"metal_errors\":"<<m.errors<<"}\n";report.close();
+    std::cout<<"CITY_GALLERY="<<(_passed ? "PASS" : "FAIL")<<std::endl;
+    _exitCode=_passed ? 0 : 1;[NSApp terminate:nil];
+}
+- (void)carGallery:(double)t {
+    if(t<3)return;
+    if(!_benchMeasured) {
+        _benchMeasured=true;_benchAt=now();_benchAudio=_session->statistics();
+        _testPreset=1; // The concept asset is kept for development, never selected by the library.
+        std::filesystem::create_directories(_options.carGallery);
+        [self check:_gameAudio.attach(_session->device()) name:"gallery_pcm_probe_attached"];
+        bool complete=CarSelections.size()==SoundSession::presets().size();
+        for(const auto &preset:SoundSession::presets()) {
+            const auto body=carBodyForPreset(preset.id);
+            complete=complete && body!=CarBody::Concept && size_t(body)<CarModels.size();
+        }
+        [self check:complete name:"all_24_presets_have_real_bodies"];
+    }
+    if(size_t(_testPreset)<CarModels.size()) {
+        const auto &model=CarModels[_testPreset];
+        if(_testStage==0) {
+            _state.carBody=CarBody(_testPreset);put(_state.title,model.label);
+            _gamePhaseAt=now();_testStage=1;
+        } else if(_testStage==1 && now()-_gamePhaseAt>.6) {
+            _renderer.capture((_options.carGallery+"/"+model.directory+".png").c_str());++_expectedCaptures;
+            _testStage=2;
+        } else if(_testStage==2 && _renderer.captures()==_expectedCaptures) {
+            _session->command(AudioEngineRunner::Action::Brake,1);_gamePhaseAt=now();_testStage=3;
+        } else if(_testStage==3 && now()-_gamePhaseAt>.6) {
+            _renderer.capture((_options.carGallery+"/"+model.directory+"-brake.png").c_str());++_expectedCaptures;
+            _testStage=4;
+        } else if(_testStage==4 && _renderer.captures()==_expectedCaptures) {
+            std::cout<<"CAR_CAPTURE="<<model.directory<<std::endl;
+            _session->command(AudioEngineRunner::Action::Brake,0);++_testPreset;_testStage=0;
+        }
+        if(t<120)return;
+        [self check:false name:"gallery_finished_before_timeout"];
+    }
+    _gameAudio.detach();const auto audio=_session->statistics();const auto metrics=_renderer.metrics();
+    [self check:size_t(_testPreset)==CarModels.size() && _renderer.captures()==2*(CarModels.size()-1) name:"all_car_captures_written"];
+    [self check:audio.silenceFrames==_benchAudio.silenceFrames && audio.writeErrors==0 name:"gallery_no_missing_audio_frames"];
+    [self check:_gameAudio.frames>44100 && _gameAudio.silentBlocks==0 && _gameAudio.invalidSamples==0 && _gameAudio.clippedSamples==0 name:"gallery_continuous_valid_pcm"];
+    [self check:metrics.errors==0 name:"gallery_no_metal_errors"];
+    std::ofstream report(_options.carGallery+"/result.json");
+    report<<"{\"result\":\""<<(_passed ? "PASS" : "FAIL")<<"\",\"bodies\":"<<CarModels.size()-1
+        <<",\"assigned_presets\":"<<CarSelections.size()<<",\"captures\":"<<_renderer.captures()
+        <<",\"missing_audio_frames\":"<<audio.silenceFrames-_benchAudio.silenceFrames
+        <<",\"metal_errors\":"<<metrics.errors<<"}\n";report.close();
+    std::cout<<"CAR_GALLERY="<<(_passed ? "PASS" : "FAIL")<<std::endl;
+    _exitCode=_passed ? 0 : 1;[NSApp terminate:nil];
+}
 - (void)benchmark:(double)t {
     if(_testStage==0 && t>4) { _renderer.capture((_options.benchmark+(_state.roadView ? "-idle.png" : ".png")).c_str());_testStage=1; }
     if(!_benchMeasured && t>3) { _benchMeasured=true;_benchAt=now();_benchMetrics=_renderer.metrics();_benchAudio=_session->statistics(); }
@@ -887,7 +976,12 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         [self check:std::abs(metrics.game.driftAngle)>.15 && metrics.game.driftScore>1 name:"arcade_drift_moves_and_scores"];
         _renderer.capture((_options.arcadeTest+"-drift.png").c_str());++_expectedCaptures;
         _state.steering=0;_state.driftHeld=false;pedal(A::Throttle,0);pedal(A::Brake,1);_testStage=4;
-    } else if(_testStage==4 && t>8.3) {
+        _gamePhaseAt=now();
+    } else if(_testStage==4 && t>8.3 && (engine.vehicleSpeed<.2 || now()-_gamePhaseAt>2.2)) {
+        // The F1 reaches >100 mph in this acceleration window. The previous
+        // fixed 1.65-second check ran before its ~1.7-second full stop. Keep a
+        // bounded stop deadline and validate the actual speed and running RPM.
+        std::cout<<"ARCADE_BRAKE seconds="<<now()-_gamePhaseAt<<" speed_mps="<<engine.vehicleSpeed<<" rpm="<<engine.rpm<<std::endl;
         [self check:engine.vehicleSpeed<.2 && engine.rpm>400 name:"arcade_brakes_without_stalling"];
         [self check:std::abs(metrics.game.driftAngle)<.02 && metrics.game.totalDriftScore>1 name:"arcade_release_straightens_and_banks_drift"];
         _gameBefore=metrics;pedal(A::Brake,0);pedal(A::BackPedal,1);_testStage=5;
@@ -1047,6 +1141,8 @@ int main(int argc,char **argv) {
                         <<"--play --drive --road --city --circuit --uncapped --no-effects --silent --muted --log FILE\n"
                         <<"--benchmark PREFIX [--seconds N] [--offscreen] [--uncapped]\n"
                         <<"--ui-test DIRECTORY  Hidden, programmatic input/audio/Metal checks\n"
+                        <<"--car-gallery DIRECTORY         Capture every body and validate all preset mappings\n"
+                        <<"--city-gallery DIRECTORY        Capture ten city districts with PCM checks\n"
                         <<"--self-test PREFIX [--preset ID] [--ui-stall-ms 0..1000]\n"
                         <<"--game-test PREFIX              Circuit, collision, recovery and audio test\n"
                         <<"--arcade-test PREFIX            Reverse, drift, render stalls and PCM checks\n"
@@ -1066,6 +1162,8 @@ int main(int argc,char **argv) {
                 if(arg=="--circuit"){options.world=DrivingWorld::Circuit;options.worldExplicit=true;options.roadView=true;continue;}
                 if(arg=="--game-test" && i+1<argc){options.gameTest=argv[++i];options.play=true;options.drive=true;options.roadView=true;continue;}
                 if(arg=="--arcade-test" && i+1<argc){options.arcadeTest=argv[++i];options.play=true;options.drive=true;options.roadView=true;continue;}
+                if(arg=="--city-gallery" && i+1<argc){options.cityGallery=argv[++i];options.play=true;options.roadView=true;options.world=DrivingWorld::City;options.worldExplicit=true;options.offscreen=true;continue;}
+                if(arg=="--car-gallery" && i+1<argc){options.carGallery=argv[++i];options.play=true;options.roadView=true;options.offscreen=true;continue;}
                 if(arg=="--uncapped"){options.uncapped=true;continue;}
                 if(arg=="--offscreen"){options.offscreen=true;continue;}
                 if(arg=="--no-effects"){options.effects=false;continue;}

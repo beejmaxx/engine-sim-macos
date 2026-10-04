@@ -20,13 +20,17 @@ fragment float4 sound_fragment(Raster in [[stage_in]], texture2d<float> atlas [[
     float3 color = in.color.rgb;
     if (in.kind >= 3) {
         float distance = .25 / max(0.00001, 1.0 - in.position.z);
+        if(in.kind==10) {
+            alpha*=atlas.sample(glyphSampler,in.uv*distance).r;
+            if(alpha<.15)discard_fragment();
+        }
         if (in.kind == 6) {
             constexpr sampler leaves(filter::linear,mip_filter::linear,address::clamp_to_edge);
             float4 sample=foliage.sample(leaves,in.uv*distance);
             if(sample.a<.4)discard_fragment();
             color*=sample.rgb;alpha=1;
         }
-        if(in.kind==7 || in.kind==8) {
+        if(in.kind==7 || in.kind==8 || in.kind==12) {
             float2 wall=in.uv*distance,cell=wall/float2(3.2,3.5);
             float2 f=fract(cell),aa=max(fwidth(cell),float2(.007));
             float2 window=smoothstep(float2(.14),float2(.14)+aa,f)*(1-smoothstep(float2(.86)-aa,float2(.86),f));
@@ -36,6 +40,25 @@ fragment float4 sound_fragment(Raster in [[stage_in]], texture2d<float> atlas [[
             if(variation>.94)glass=float3(.73,.66,.43);
             if(in.kind==8)color=mix(color*.75,glass,.9*mask);
             else color=mix(color,glass,mask*.92);
+            if(in.kind==12) {
+                float2 brick=wall/float2(.6,.23);
+                brick.x+=fmod(floor(brick.y),2.0)*.5;
+                float2 edge=min(fract(brick),1-fract(brick));
+                float mortar=1-smoothstep(.025,.08,min(edge.x,edge.y));
+                float detail=1-smoothstep(.3,1.2,max(length(dfdx(brick)),length(dfdy(brick))));
+                color=mix(color,color*.82,mortar*detail*(1-mask));
+            }
+        }
+        if(in.kind==13) {
+            float2 wall=in.uv*distance;
+            float detail=1-smoothstep(.1,.8,length(dfdx(wall)));
+            color*=1+sin(wall.x*24)*.09*detail;
+        }
+        if(in.kind==11) {
+            float2 slab=in.uv*distance/1.6;
+            float2 edges=min(fract(slab),1-fract(slab));
+            float seam=1-smoothstep(.012,.028,min(edges.x,edges.y));
+            color*=1-.14*seam*(1-smoothstep(.1,.8,length(dfdx(slab))));
         }
         if(in.kind==9) {
             float2 world=in.uv*distance;
@@ -54,7 +77,8 @@ fragment float4 sound_fragment(Raster in [[stage_in]], texture2d<float> atlas [[
                 color *= 1.0 + .08 * patches * (1.0 - smoothstep(.5, 4.0, footprint));
             }
         }
-        color = mix(color, float3(137.0, 154.0, 156.0) / 255.0, clamp((distance - 35.0) / 150.0, 0.0, .88));
+        color = mix(color, float3(153.0, 175.0, 182.0) / 255.0,
+                    min(.88,1-exp(-max(0.0,distance-65.0)/1100.0)));
     }
     return float4(color, alpha);
 }

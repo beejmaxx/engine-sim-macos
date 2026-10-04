@@ -1,0 +1,7 @@
+This work is based on "Hot Rod Pickup"
+https://sketchfab.com/3d-models/hot-rod-pickup-7b882dc2d7ed407689f8e851d5f8250f
+by Fredrik (https://sketchfab.com/kird3rf)
+License: CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Original glTF asset.extras attribution is preserved in SOURCE-METADATA.json.
+The full CC BY 4.0 license is included in CC-BY-4.0.txt.

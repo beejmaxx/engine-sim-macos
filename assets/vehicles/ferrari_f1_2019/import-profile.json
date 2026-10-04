@@ -1,0 +1,48 @@
+{
+  "length": 5.65,
+  "forward": [
+    0,
+    0,
+    1
+  ],
+  "tyre_materials": [
+    1
+  ],
+  "wheel_materials": [
+    1
+  ],
+  "wheel_parts": [
+    "/Decal Tire"
+  ],
+  "triangle_budget": 180000,
+  "materials": {
+    "0": {
+      "metal": 0.2,
+      "rough": 0.3,
+      "coat": 0.5,
+      "emission": [
+        0,
+        0,
+        0
+      ]
+    },
+    "1": {
+      "metal": 0,
+      "rough": 0.72,
+      "emission": [
+        0,
+        0,
+        0
+      ]
+    },
+    "2": {
+      "metal": 0,
+      "rough": 0.45,
+      "emission": [
+        0,
+        0,
+        0
+      ]
+    }
+  }
+}

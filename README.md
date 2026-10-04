@@ -9,10 +9,13 @@ built on [Carles Onielfa's Open Engine Simulator](https://github.com/carlesoniel
 The original simulation, sounds, and visual design are their work. This fork
 focuses on responsive sound and a native Mac interface.
 
-![Ferrari 458 in Portside City](docs/images/driving-ferrari-458.png)
+![Portside City downtown](docs/images/portside-downtown.png)
 
-[Supra](docs/images/driving-supra.png) · [Corvette](docs/images/driving-corvette-c7.png)
-· [Porsche](docs/images/driving-gt3.png) · [Piston cutaway](docs/images/porsche-gt3.png).
+[Coast](docs/images/portside-coast.png) · [Port](docs/images/portside-harbor.png)
+· [Parks](docs/images/portside-park.png) · [Stadium](docs/images/portside-stadium.png)
+· [BMW](docs/images/car-bmw_e36.png) · [Audi](docs/images/car-audi_quattro.png)
+· [Subaru](docs/images/car-subaru_wrx_sti.png) · [Ferrari F1](docs/images/car-ferrari_f1_2019.png)
+· [Piston cutaway](docs/images/porsche-gt3.png).
 
 ## What works
 
@@ -27,15 +30,18 @@ focuses on responsive sound and a native Mac interface.
   launch and up/downshifts, and briefly cuts throttle during a shift. Braking
   cuts the accelerator, prevents new upshifts, and downshifts for engine braking.
 - Clear native Mac monospaced text, rasterized once into a Retina font atlas.
-- Portside City: a free-roam street grid about 1.1 km across, with 49
-  intersections, buildings, alleys, open plazas and a waterfront promenade.
-  A city minimap and optional green destinations give you places to explore.
+- Portside City: a 3.12 × 3.12 km free-roam map with 361 connected
+  intersections and 1,399 structures across eight districts. Explore downtown
+  towers, old-town shops, residential streets, university courtyards, parks,
+  a stadium, fuel stations, a container port and the coastal promenade. Wide
+  express avenues connect the districts; a local minimap and 12 named tour
+  stops guide exploration.
   **T** switches between the city and forest circuit after stopping the car.
 - A closed forest circuit with arcade steering, off-road resistance and
   barrier collisions. A three-lap time trial has ordered checkpoints, lap/best
   timers, a finish state and a minimap. Recover to the last checkpoint or start
   a new run without reloading the engine.
-- Detailed Porsche 911 GT3, Toyota Supra Mk4, Ferrari 458 and Corvette C7 bodies,
+- Fourteen real vehicle body models covering all 24 engine selections,
   with reflective paint, textured trim, working brake lights, rolling and steering wheels, body lean,
   a responsive chase camera and a large MPH/RPM/gear HUD. The engine simulation drives
   actual forward and reverse travel; road and wheel motion use metres.
@@ -57,10 +63,11 @@ focuses on responsive sound and a native Mac interface.
 
 The new Porsche presets are **approximate sound models**, not recordings or
 factory-calibrated simulations. See [engines and provenance](docs/ENGINES.md).
-Press **E** to choose a car: Supra, Ferrari F136 and LS select the new bodies;
-both GT3 presets use the Porsche. The Corvette uses the existing LS V8 as a
-game engine swap. Other presets retain the credited concept body, labelled in
-the driving view. See [body selection and credits](docs/ENGINES.md#car-bodies).
+Press **E** to choose a car: Porsche GT3/930, Supra, Ferrari 458/F1, Corvette,
+BMW E36, Audi Quattro, Honda Integra, Subaru WRX STI, Lexus LFA, Nissan 350Z,
+Caterham Seven and a Ford hot-rod pickup. Engine variants share bodies;
+non-matching, motorcycle and aircraft engines are explicitly labelled as game
+engine swaps. See [all body assignments and credits](docs/ENGINES.md#car-bodies).
 This is an experimental sound simulator, not an engineering or tuning tool.
 
 ## Build on an Apple Silicon Mac

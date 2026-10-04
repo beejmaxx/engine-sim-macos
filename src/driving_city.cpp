@@ -2,32 +2,107 @@
 #include <algorithm>
 #include <limits>
 
+DrivingCity::Lot DrivingCity::lot(int x,int z) {
+    if(plaza(x,z))return Lot::Plaza;
+    if(x==-5 && z==-1)return Lot::Stadium;
+    if((x==0 && z==-3)||(x==5 && z==-6)||(x==-7 && z==3))return Lot::Fuel;
+    if(x>=7 && z>=-2 && z<=2)return Lot::Harbor;
+    if((x>=-3 && x<=-2 && z>=0 && z<=2) || (x==-6 && z==5) ||
+       (x==3 && z==5) || (x==-8 && z==-3) || (x==4 && z==-4))return Lot::Park;
+    return Lot::Built;
+}
+DrivingCity::Zone DrivingCity::zone(DrivingPoint p) {
+    if(p.x>=960)return Zone::Harbor;
+    if(p.x<-1120)return Zone::Beach;
+    if(p.z<-960)return Zone::Industrial;
+    if(p.x<-480 && p.z>=640)return Zone::University;
+    if(p.z>=640)return Zone::Northside;
+    if(p.x<-320 && p.z>=-320)return Zone::Garden;
+    if(p.z<-160)return Zone::OldTown;
+    return Zone::Downtown;
+}
 DrivingCity::DrivingCity() {
-    constexpr uint32_t colors[]={0xB9A38D,0xCBD1CB,0x9BA8B0,0xAC8872,0x89949F,0xDBCFB7};
-    blocks.reserve(144);
+    constexpr uint32_t masonry[]={0xC1AA8B,0xC9CCC5,0x9FABB1,0xAE7862,0x9C9690,0xD4C8AA};
+    constexpr uint32_t houses[]={0xDDD3BC,0xB8C3BF,0xC49A80,0x9EB9BC,0xD2BB91,0xB7AFB0};
+    constexpr uint32_t containers[]={0x9E4135,0x306B80,0xBA8D3F,0x53735F,0xBFBCB0};
+    blocks.reserve(1600);
+    auto add=[&](DrivingPoint lo,DrivingPoint hi,double h,uint32_t color,Style style) {
+        blocks.push_back({lo,hi,h,color,style==Style::Glass,style});
+    };
     for(int x=-GridRadius;x<GridRadius;++x)for(int z=-GridRadius;z<GridRadius;++z) {
-        if(plaza(x,z))continue;
-        const DrivingPoint lo{x*Block+roadHalfWidth(x)+7,z*Block+roadHalfWidth(z)+7};
-        const DrivingPoint hi{(x+1)*Block-roadHalfWidth(x+1)-7,(z+1)*Block-roadHalfWidth(z+1)-7};
+        const auto use=lot(x,z);
+        const DrivingPoint lo{x*Block+roadHalfWidth(x)+8,z*Block+roadHalfWidth(z)+8};
+        const DrivingPoint hi{(x+1)*Block-roadHalfWidth(x+1)-8,(z+1)*Block-roadHalfWidth(z+1)-8};
         const auto mid=(lo+hi)*.5;
-        for(int a=0;a<2;++a)for(int b=0;b<2;++b) {
-            const unsigned seed=unsigned((x+3)*113+(z+3)*41+a*17+b*7);
-            const bool downtown=x>=0 && x<2 && z>=-1 && z<2;
-            const double h=(downtown ? 25 : 7)+(seed%6)*(downtown ? 8 : 3);
-            DrivingPoint p{a ? mid.x+5 : lo.x,b ? mid.z+5 : lo.z};
-            DrivingPoint q{a ? hi.x : mid.x-5,b ? hi.z : mid.z-5};
-            // Setbacks and gaps form accessible alleys between the buildings.
-            p.x+=seed%4;p.z+=(seed/3)%4;
-            blocks.push_back({p,q,h,colors[seed%std::size(colors)],downtown && seed%3!=0});
+        const unsigned seed=unsigned((x+9)*113+(z+9)*41);
+        if(use==Lot::Park || use==Lot::Plaza)continue;
+        if(use==Lot::Stadium) {
+            add(lo,{lo.x+13,hi.z},18,0xC8C4B9,Style::Stadium);
+            add({hi.x-13,lo.z},hi,18,0xC8C4B9,Style::Stadium);
+            add({lo.x+20,hi.z-12},{hi.x-20,hi.z},12,0xD4CEC0,Style::Stadium);
+            continue;
         }
+        if(use==Lot::Fuel) {
+            add({lo.x+4,hi.z-24},{hi.x-4,hi.z-4},5,0xE1D8BA,Style::Civic);
+            continue;
+        }
+        if(use==Lot::Harbor) {
+            for(int a=0;a<3;++a)for(int b=0;b<3;++b) {
+                DrivingPoint p{lo.x+6+a*28,lo.z+6+b*29};
+                add(p,p+DrivingPoint{12,24},(1+(a+b)%3)*2.7,containers[(seed+a+b)%5],Style::Container);
+            }
+            continue;
+        }
+        const auto area=zone(mid);
+        if(area==Zone::Industrial) {
+            add(lo,{mid.x-7,hi.z},10+seed%5,masonry[seed%6],Style::Warehouse);
+            add({mid.x+7,lo.z},hi,8+seed%7,masonry[(seed+2)%6],Style::Warehouse);
+        } else if(area==Zone::Garden || area==Zone::Northside || area==Zone::Beach) {
+            // Smaller footprints, gardens and driveways distinguish residential
+            // streets from the downtown canyon, without blocking any through road.
+            for(int a=0;a<3;++a)for(int b=0;b<2;++b) {
+                const DrivingPoint p{lo.x+5+a*(hi.x-lo.x)/3,lo.z+9+b*(hi.z-lo.z)/2};
+                add(p,p+DrivingPoint{22,28},6+(seed+a+b)%3,houses[(seed+a+b*2)%6],Style::House);
+            }
+        } else if(area==Zone::University) {
+            add(lo,{lo.x+26,hi.z},18,0xB89073,Style::Civic);
+            add({hi.x-26,lo.z},hi,14,0xBDAA90,Style::Civic);
+            add({lo.x+36,hi.z-24},{hi.x-36,hi.z},9,0xC6B194,Style::Civic);
+        } else {
+            const bool downtown=area==Zone::Downtown;
+            for(int a=0;a<2;++a)for(int b=0;b<2;++b) {
+                const unsigned n=seed+a*17+b*7;
+                DrivingPoint p{a ? mid.x+6 : lo.x,b ? mid.z+6 : lo.z};
+                DrivingPoint q{a ? hi.x : mid.x-6,b ? hi.z : mid.z-6};
+                p.x+=n%4;p.z+=(n/3)%4;
+                const double h=downtown ? 30+(n%9)*13 : 10+(n%4)*4;
+                add(p,q,h,masonry[n%6],downtown && n%3!=0 ? Style::Glass : Style::Masonry);
+            }
+            // Recognizable stepped skyline landmark at the financial centre.
+            if(x==2 && z==1) {blocks.back().height=204;blocks.back().style=Style::Glass;blocks.back().glass=true;}
+        }
+    }
+    // Broad phase is immutable, allocation-free at 120 Hz, and shared by body
+    // contacts and occupied queries. Renderer culling has its own static cells.
+    for(unsigned i=0;i<blocks.size();++i) {
+        const auto &b=blocks[i];
+        for(int x=cell(b.lo.x);x<=cell(b.hi.x);++x)
+            for(int z=cell(b.lo.z);z<=cell(b.hi.z);++z)spatial[x*Cells+z].push_back(i);
     }
 }
 const DrivingCity &drivingCity() {static const DrivingCity city;return city;}
 const char *DrivingCity::district(DrivingPoint p) {
-    if(p.x>320)return "EAST QUAYS";
-    if(p.z<-160)return "OLD TOWN";
-    if(p.x<0)return "GARDEN DISTRICT";
-    return "DOWNTOWN";
+    switch(zone(p)) {
+        case Zone::Downtown:return "DOWNTOWN";
+        case Zone::OldTown:return "OLD TOWN";
+        case Zone::Garden:return "GARDEN DISTRICT";
+        case Zone::University:return "UNIVERSITY";
+        case Zone::Northside:return "NORTHSIDE";
+        case Zone::Harbor:return "EAST QUAYS";
+        case Zone::Industrial:return "SOUTH INDUSTRIAL";
+        case Zone::Beach:return "OCEAN DRIVE";
+    }
+    return "PORTSIDE";
 }
 double DrivingCity::roadDistance(DrivingPoint p) const {
     double d=std::numeric_limits<double>::max();
@@ -67,7 +142,9 @@ DrivingCity::Spawn DrivingCity::nearestStreet(DrivingPoint p,double yaw) const {
 }
 bool DrivingCity::occupied(DrivingPoint p,double radius) const {
     if(std::abs(p.x)+radius>Extent || std::abs(p.z)+radius>Extent)return true;
-    for(const auto &b:blocks) {
+    for(int x=cell(p.x-radius);x<=cell(p.x+radius);++x)
+      for(int z=cell(p.z-radius);z<=cell(p.z+radius);++z)for(unsigned id:spatial[x*Cells+z]) {
+        const auto &b=blocks[id];
         const DrivingPoint q{std::clamp(p.x,b.lo.x,b.hi.x),std::clamp(p.z,b.lo.z,b.hi.z)};
         if(drivingLength(p-q)<=radius)return true;
     }
@@ -86,7 +163,9 @@ DrivingCity::Contact DrivingCity::constrain(DrivingPoint &p,double yaw) const {
             const auto delta=bounded-center;p=p+delta;center=bounded;
             contact={delta*(1/drivingLength(delta)),true};
         }
-        for(const auto &b:blocks) {
+        const int x0=cell(center.x-radius),x1=cell(center.x+radius),z0=cell(center.z-radius),z1=cell(center.z+radius);
+        for(int x=x0;x<=x1;++x)for(int z=z0;z<=z1;++z)for(unsigned id:spatial[x*Cells+z]) {
+            const auto &b=blocks[id];
             if(center.x<b.lo.x-radius || center.x>b.hi.x+radius || center.z<b.lo.z-radius || center.z>b.hi.z+radius)continue;
             const DrivingPoint nearest{std::clamp(center.x,b.lo.x,b.hi.x),std::clamp(center.z,b.lo.z,b.hi.z)};
             auto delta=center-nearest;const double distance=drivingLength(delta);

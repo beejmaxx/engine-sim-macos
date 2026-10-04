@@ -40,6 +40,36 @@ This is an independent community fork, maintained at
   [the original model](https://sketchfab.com/3d-models/chevrolet-corvette-c7-2b509d1bce104224b147c81757f6f43a).
   The converted mesh and textures retain that license; see
   [source, modifications and license](assets/vehicles/corvette_c7/README.md).
+- **BMW E36 M3**, by Martin Trafas (https://sketchfab.com/Bexxie), under **CC BY 4.0**.
+  Based on [the original model](https://sketchfab.com/3d-models/bmw-e36-m3-762b90efd3dc413cb61c3e3c8097b8ac); see
+  [source, modifications and license](assets/vehicles/bmw_e36/README.md).
+- **Audi Quattro Sport Stock**, by Pitstop 3D - Euro (https://sketchfab.com/carfan100), under **CC BY 4.0**.
+  Based on [the original model](https://sketchfab.com/3d-models/audi-quattro-sport-stock-e81aa698ddba46838c94fe52be81d378); see
+  [source, modifications and license](assets/vehicles/audi_quattro/README.md).
+- **Honda Integra (DB8) Type-R**, by Myedsu (https://sketchfab.com/myedsu), under **CC BY 4.0**.
+  Based on [the original model](https://sketchfab.com/3d-models/honda-integra-db8-type-r-06f0eba84e9745e9aec41a985ccac915); see
+  [source, modifications and license](assets/vehicles/honda_integra/README.md).
+- **2010 Subaru Impreza WRX STi**, by Galaxy Car Showroom (https://sketchfab.com/adrianaflak09), under **CC BY 4.0**.
+  Based on [the original model](https://sketchfab.com/3d-models/2010-subaru-impreza-wrx-sti-b61292f5b9d2416990aa5bd502555f3a); see
+  [source, modifications and license](assets/vehicles/subaru_wrx_sti/README.md).
+- **Low Poly Lexus LFA**, by yokatann (https://sketchfab.com/yokatann), under **CC BY 4.0**.
+  Based on [the original model](https://sketchfab.com/3d-models/low-poly-lexus-lfa-56c3a62e5bb645d8afaf1dcfa4b665ea); see
+  [source, modifications and license](assets/vehicles/lexus_lfa/README.md).
+- **FREE 1975 Porsche 911 (930) Turbo**, by Karol Miklas (https://sketchfab.com/karolmiklas), under **CC BY 4.0**.
+  Based on [the original model](https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e); see
+  [source, modifications and license](assets/vehicles/porsche_930/README.md).
+- **1980 Caterham Super 7**, by the 86 guy (https://sketchfab.com/the_86_guy), under **CC BY 4.0**.
+  Based on [the original model](https://sketchfab.com/3d-models/1980-caterham-super-7-c5f0c7c1c6014eeda91b74e592183aee); see
+  [source, modifications and license](assets/vehicles/caterham_seven/README.md).
+- **Hot Rod Pickup**, by Fredrik (https://sketchfab.com/kird3rf), under **CC BY 4.0**.
+  Based on [the original model](https://sketchfab.com/3d-models/hot-rod-pickup-7b882dc2d7ed407689f8e851d5f8250f); see
+  [source, modifications and license](assets/vehicles/ford_hotrod/README.md).
+- **Nissan 350z**, by David_Holiday (https://sketchfab.com/David_Holiday), under **CC BY 4.0**.
+  Based on [the original model](https://sketchfab.com/3d-models/nissan-350z-18c081f765854d249bb8dc580a1e9f7c); see
+  [source, modifications and license](assets/vehicles/nissan_350z/README.md).
+- **Ferrari F1 2019**, by valvetin (https://sketchfab.com/valvetin), under **CC BY 4.0**.
+  Based on [the original model](https://sketchfab.com/3d-models/ferrari-f1-2019-1b050bffe4e749b586b4782ee7ff4fd0); see
+  [source, modifications and license](assets/vehicles/ferrari_f1_2019/README.md).
 - **Pine Tree 01 preview render**, by Rico Cilliers and Rob Tuytel, from
   [Poly Haven](https://polyhaven.com/a/pine_tree_01), is used under **CC0 1.0**.
   See [scenery source and license](assets/scenery/README.md).
