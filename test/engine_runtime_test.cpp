@@ -61,7 +61,9 @@ TEST(EngineRuntime, DefaultEngineRunsAfterStarterReleaseAndProducesAudio) {
 
 TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad) {
     const std::filesystem::path assets(ENGINE_SIM_TEST_ASSET_DIRECTORY);
-    for (const char *script : {"engines/atg-video-2/03_2jz.mr", "engines/porsche/01_porsche_911_gt3.mr"}) {
+    struct Performance { double sixty=0,hundred=0,speed=0; } gt3,sprint;
+    for (const char *script : {"engines/atg-video-2/03_2jz.mr", "engines/porsche/01_porsche_911_gt3.mr",
+                              "engines/porsche/03_porsche_911_gt3_sprint.mr"}) {
         SCOPED_TRACE(script);
         const auto entry = std::filesystem::temp_directory_path() / ("engine-sim-auto-" +
             std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".mr");
@@ -88,6 +90,7 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
         bool torqueCut = false;
         int brakeUpshifts=0;
         double sixtyDistance=-1,sixtyTime=-1,hundredDistance=-1,hundredTime=-1,stopDistance=-1,stopTime=-1;
+        double accelerationSixty=-1,accelerationHundred=-1;
         int16_t samples[512]{};
         constexpr double block=.005; // same controller cadence as the sound host
         for (int frame = 0; frame < 8200; ++frame) {
@@ -110,6 +113,10 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
             const double rpm = output.engine->getRpm();
             maxGear = std::max(maxGear, gear);
             maxSpeed = std::max(maxSpeed, output.vehicle->getSpeed());
+            if(time>=4 && time<28) {
+                if(accelerationSixty<0 && output.vehicle->getSpeed()>=60*.44704)accelerationSixty=time+block-4;
+                if(accelerationHundred<0 && output.vehicle->getSpeed()>=100*.44704)accelerationHundred=time+block-4;
+            }
             if(time>28.4 && gear>previousGear)++brakeUpshifts; // permit an already started shift
             if(time>=28 && hundredTime<0 && output.vehicle->getSpeed()<=100*.44704) {
                 hundredTime=time;hundredDistance=output.vehicle->getTravelledDistance();
@@ -133,6 +140,7 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
         EXPECT_GT(biggestRpmDrop, 300);
         EXPECT_TRUE(torqueCut);
         EXPECT_GT(audible, 10000);
+        EXPECT_GT(accelerationSixty,0);EXPECT_GT(accelerationHundred,accelerationSixty);
         EXPECT_EQ(brakeUpshifts,0);
         ASSERT_GT(sixtyTime,28);ASSERT_GT(stopTime,sixtyTime);
         EXPECT_LT(stopDistance-sixtyDistance,17);EXPECT_LT(stopTime-sixtyTime,1.3);
@@ -143,8 +151,11 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
         automatic.setEnabled(false, *output.transmission);
         EXPECT_EQ(output.transmission->getGear(), -1);
         EXPECT_EQ(output.transmission->getClutchPressure(), 0);
+        if(std::string(script)=="engines/porsche/01_porsche_911_gt3.mr")gt3={accelerationSixty,accelerationHundred,maxSpeed};
+        if(std::string(script)=="engines/porsche/03_porsche_911_gt3_sprint.mr")sprint={accelerationSixty,accelerationHundred,maxSpeed};
         std::cout << "DRIVE " << script << " max_gear=" << maxGear + 1 << " upshifts=" << upshifts
             << " peak_mph=" << maxSpeed / .44704 << " rpm_drop=" << biggestRpmDrop
+            << " zero_to_sixty_s=" << accelerationSixty << " zero_to_hundred_s=" << accelerationHundred
             << " stopped_mph=" << output.vehicle->getSpeed() / .44704
             << " sixty_stop_m=" << stopDistance-sixtyDistance << " sixty_stop_s=" << stopTime-sixtyTime
             << " hundred_stop_m=" << stopDistance-hundredDistance << " hundred_stop_s=" << stopTime-hundredTime
@@ -153,11 +164,17 @@ TEST(EngineRuntime, AutomaticDrivetrainAcceleratesShiftsAndStopsUnderVehicleLoad
         output.engine->destroy(); delete output.engine;
         delete output.vehicle; delete output.transmission;
     }
+    // Exercise the real driveline: the Sprint must accelerate substantially
+    // faster while still passing the same shifts, audio and stopping checks.
+    EXPECT_LT(sprint.sixty,gt3.sixty*.8);EXPECT_LT(sprint.sixty,3);
+    EXPECT_LT(sprint.hundred,gt3.hundred*.75);EXPECT_LT(sprint.hundred,6);
+    EXPECT_GT(sprint.speed,gt3.speed*1.15);
 }
 
 TEST(EngineRuntime, ReverseBrakesBeforeChangingDirectionAndKeepsEngineRunning) {
     const std::filesystem::path assets(ENGINE_SIM_TEST_ASSET_DIRECTORY);
-    for(const char *script:{"engines/atg-video-2/03_2jz.mr","engines/porsche/01_porsche_911_gt3.mr"}) {
+    for(const char *script:{"engines/atg-video-2/03_2jz.mr","engines/porsche/01_porsche_911_gt3.mr",
+                           "engines/porsche/03_porsche_911_gt3_sprint.mr"}) {
         SCOPED_TRACE(script);
         const auto entry=std::filesystem::temp_directory_path()/("engine-sim-reverse-"+
             std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".mr");

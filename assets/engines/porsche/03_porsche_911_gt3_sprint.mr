@@ -1,0 +1,22 @@
+// Fictional arcade tune, MIT. This is not a real Porsche specification.
+// The engine/exhaust model is identical to the normal GT3. Acceleration comes
+// from a lighter vehicle; closer ratios and lower drag help it keep pulling.
+import "engine_sim.mr"
+import "gt3_engine.mr"
+
+units units()
+
+public node main {
+    set_engine(gt3_engine(name: "Porsche GT3 Sprint (arcade)"))
+    set_vehicle(vehicle(
+        mass: 760 * units.kg,
+        drag_coefficient: 0.20,
+        cross_sectional_area: 1.65 * units.m2,
+        diff_ratio: 3.42,
+        tire_radius: 10 * units.inch,
+        rolling_resistance: 140 * units.N
+    ))
+    set_transmission(transmission(max_clutch_torque: 500 * units.lb_ft)
+        .add_gear(3.80).add_gear(2.65).add_gear(1.94).add_gear(1.48)
+        .add_gear(1.16).add_gear(0.93).add_gear(0.69))
+}

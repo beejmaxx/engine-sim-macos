@@ -15,8 +15,11 @@ focuses on responsive sound and a native Mac interface.
 
 ## What works
 
-- 23 selectable engines, including Porsche flat-sixes, BMW M52B28, Supra 2JZ,
+- 24 selectable engine/car presets, including Porsche flat-sixes, BMW M52B28, Supra 2JZ,
   GM LS, Ferrari V8/V12, and Lexus LFA V10.
+- GT3 Sprint: a faster fictional arcade tune using the GT3 engine and body,
+  a lighter vehicle, lower drag and a seven-speed gearbox. Start it in the city
+  with `./run-fast.sh`, or choose **Porsche GT3 Sprint** in the Engines menu.
 - Hold-to-rev keyboard/mouse input, a persistent throttle slider, live exhaust
   and noise controls, mute, ignition, and a layered engine cutaway.
 - Automatic Drive mode uses the real vehicle load and gearbox, handles clutch
@@ -31,7 +34,7 @@ focuses on responsive sound and a native Mac interface.
   barrier collisions. A three-lap time trial has ordered checkpoints, lap/best
   timers, a finish state and a minimap. Recover to the last checkpoint or start
   a new run without reloading the engine.
-- A credited Porsche 911 GT3 body for the GT3 preset, reflective paint,
+- A credited Porsche 911 GT3 body for both GT3 presets, reflective paint,
   moving front wheels, body lean,
   a responsive chase camera and a large MPH/RPM/gear HUD. The engine simulation drives
   actual forward and reverse travel; road and wheel motion use metres.
@@ -90,6 +93,9 @@ The installed app is `dist/engine-sim-sound.app`. It includes assets and SDL3,
 so it can be moved out of the checkout. Locally built bundles are ad-hoc signed,
 not Developer ID signed or notarized. `run-sound-gui.sh` prefers the installed
 app: rerun the install command after rebuilding.
+
+For the faster GT3 Sprint, run `./run-fast.sh`. This selects the city, starts
+the engine and engages automatic Drive; hold **W** to accelerate.
 
 The package preset builds a pinned SDL3 from source with the same macOS target
 as the app, avoiding a dependency on a newer Homebrew binary's minimum OS.
@@ -154,7 +160,7 @@ Press **T** or launch with `--circuit` for the forest time trial. Drive the circ
 pass all eight checkpoints in order, and complete three laps. Brake before tight
 corners; leaving the asphalt increases resistance, while steering stays forgiving. Recovery
 adds a three-second penalty and returns you to the last passed checkpoint. The
-GT3 preset uses the Porsche body; other presets use the concept car. Handling
+GT3 presets use the Porsche body; other presets use the concept car. Handling
 is deliberately arcade-style. Car and scenery credits are in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 The city currently has static scenery and optional tour markers; traffic and

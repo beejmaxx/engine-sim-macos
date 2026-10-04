@@ -1,12 +1,14 @@
 # Engines and model provenance
 
 Press **E**, click **ENGINE LIBRARY**, or use the macOS **Engines** menu. There
-are 23 presets. `./run-sound-gui.sh --list-engines` prints their command-line IDs.
-Select an engine, press **Space** to start, and hold **R** to open the throttle.
+are 24 presets. `./run-sound-gui.sh --list-engines` prints their command-line IDs.
+Select an engine, press **X** in the game or **Space** on the dashboard to start,
+and hold **R** to open the throttle.
 
 | Added preset | ID | Configuration |
 | --- | --- | --- |
 | Porsche 911 GT3 4.0 | `porsche_911_gt3` | 3,996 cc flat-six, 9,000 RPM limit, 5 kHz simulation |
+| Porsche GT3 Sprint | `porsche_911_gt3_sprint` | Same GT3 engine/body, fictional lightweight arcade driveline, seven speeds |
 | Porsche 911 Carrera 3.2 | `porsche_911_carrera_32` | 3,164 cc flat-six, 6,500 RPM model limit, 2.5 kHz simulation |
 | BMW M52B28 | `bmw_m52b28` | Existing upstream 2.8 L straight-six script, now selectable |
 
@@ -39,6 +41,34 @@ instead of simulating its individual throttle bodies. The Carrera does not
 synthesize a separate cooling-fan sound. No horsepower, torque, or acoustic
 match to a real car is claimed.
 
+### GT3 Sprint arcade tune
+
+The Sprint is a fictional performance preset, not a Porsche production model.
+It shares the complete engine and exhaust configuration in `porsche/gt3_engine.mr`
+with the normal GT3. It uses a 760 kg virtual vehicle, 0.20 drag coefficient,
+1.65 m² frontal area, 140 N rolling resistance, and seven ratios
+(3.80 / 2.65 / 1.94 / 1.48 / 1.16 / 0.93 / 0.69). The final drive is 3.42.
+The engine still drives the vehicle through the simulated clutch and gearbox,
+so RPM, shifts, acceleration and sound remain linked. Existing arcade brakes,
+steering and the reverse speed limit still apply. No additional synthesis work
+or per-frame rendering work is needed.
+
+Run `./run-fast.sh` to start it in Portside City with automatic Drive, or select
+**Porsche GT3 Sprint** from the native Engines menu.
+
+Measured in the deterministic drivetrain test at full throttle (simulation
+results, not real-car claims):
+
+| Measurement | Normal GT3 | GT3 Sprint |
+| --- | ---: | ---: |
+| 0–60 mph | 3.675 s | 2.705 s |
+| 0–100 mph | 9.095 s | 5.610 s |
+| Speed after 24 seconds | 146.975 mph | 202.240 mph |
+| 100 mph to stopped | 1.700 s / 37.65 m | 1.700 s / 37.73 m |
+
+The stopping figures use the intentionally strong arcade brakes. The 24-second
+figure is the speed reached in that run, not an established maximum speed.
+
 ## Adding an engine
 
 Place a script under `assets/engines/<group>/` with a `public node main` that
@@ -47,7 +77,7 @@ rebuild, and install: the catalog is generated at configure time. Helper scripts
 without `main` are not shown. Numeric filename prefixes such as `01_` are
 removed from the command-line ID.
 
-The Mac host normally uses 2,500 simulation steps per second. The GT3 and
+The Mac host normally uses 2,500 simulation steps per second. Both GT3 presets and
 Ferrari 412 T2 use 5,000. Per-engine host settings live in
 `SoundSession::presets()` in `src/sound_session.cpp`; these override the script
 frequency to keep the audio producer within its real-time budget.
@@ -58,7 +88,7 @@ their license and attribution. A public download page alone is not a license.
 ## Current limits
 
 All catalog scripts are compile-tested. Runtime checks cover the Supra, LS,
-both Ferraris, both Porsches, and BMW; the rest are inherited examples and have
+both Ferraris, all three Porsche presets, and BMW; the rest are inherited examples and have
 not all been tuned for this host's lower simulation frequencies. The radial-9
 example currently stalls at the 2.5 kHz host setting. This simulator is for sound
 and experimentation, not engineering measurements or tuning decisions.

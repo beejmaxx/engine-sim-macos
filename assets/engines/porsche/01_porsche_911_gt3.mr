@@ -1,26 +1,11 @@
 // Approximate sound model, MIT. Specification sources: docs/ENGINES.md.
 import "engine_sim.mr"
-import "flat_six.mr"
+import "gt3_engine.mr"
 
 units units()
-impulse_response_library ir_lib()
 
 public node main {
-    set_engine(sound_flat_six(
-        name: "Porsche 911 GT3 4.0 (approx.)",
-        bore: 102 * units.mm,
-        stroke: 81.5 * units.mm,
-        compression_ratio: 13.3,
-        redline: 9000 * units.rpm,
-        intake_duration: 256 * units.deg,
-        exhaust_duration: 252 * units.deg,
-        valve_lift: 12.6 * units.mm,
-        flywheel_mass: 4.5 * units.kg,
-        exhaust_length: 450 * units.mm,
-        exhaust_impulse: ir_lib.minimal_muffling_02,
-        idle_plate: 0.9978,
-        flow_scale: 1.15
-    ))
+    set_engine(gt3_engine())
     // Generic test vehicle and six-speed ratios, not a calibrated GT3 driveline.
     set_vehicle(vehicle(mass: 1450 * units.kg, rolling_resistance: 210))
     set_transmission(transmission(max_clutch_torque: 500 * units.lb_ft)

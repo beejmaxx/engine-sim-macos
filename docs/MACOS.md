@@ -226,7 +226,7 @@ The benchmark saves JSON, a PNG read back from the GPU, and timing evidence.
 It counts GPU-completed frames, not independently measured display scanouts.
 `--offscreen` selects hidden rendering; `--silent` selects dummy audio explicitly.
 The native input suite uses synthetic AppKit events and Metal readback, not
-computer-use automation. It covers seven engines, including both Porsches.
+computer-use automation. It covers eight presets, including all three Porsches.
 
 To check the car, actual braking, and sound together:
 
@@ -433,6 +433,29 @@ audio frames, unexpected silent PCM blocks, clipped/invalid samples or Metal
 errors**. Mean CPU/GPU work was 0.62/4.57 ms; the measured 55.03 FPS includes
 the deliberate render pause. Maximum mixer callback gap was 11.80 ms. These
 local M1 checks measure software output and rendering, not acoustic speaker latency.
+
+The GT3 Sprint addition passed all **92 packaged tests**, including catalog
+compilation, the stock/Sprint drivetrain comparison and reverse/braking checks.
+The native input/render suite passed across eight presets. Direct Metal captures
+confirmed the Sprint title and Porsche body in both maps. In the deterministic
+drivetrain test the Sprint reached 60 mph in 2.705 s, 100 mph in 5.610 s and
+202.240 mph after 24 seconds of acceleration; the normal GT3 measured 3.675 s,
+9.095 s and 146.975 mph. These are arcade simulation results.
+
+Its 41-second real CoreAudio drive test passed through all seven gears, reached
+202.254 mph, braked to idle, and recorded zero missing audio frames, clipped
+samples or unexpected silent blocks. A separate CoreAudio city/drift/reverse
+test passed with zero missing/invalid/clipped audio, unexpected silent blocks
+or Metal errors. It averaged 55.04 FPS including the deliberate 1.2-second
+render stall, with 0.70 ms mean CPU work and 4.94 ms mean GPU time. Audio also
+continued through the separate AppKit stall. Evidence is under
+`build/audio-validation/gt3-sprint/`; repeat with:
+
+```sh
+./run-fast.sh --drive-test "$PWD/build/audio-validation/sprint-drive"
+python3 test/sound_gui_smoke.py --arcade-only --real-audio \
+  --presets porsche_911_gt3_sprint --output build/audio-validation/sprint-city
+```
 
 See [ENGINES.md](ENGINES.md) for model limitations, including the radial-9 startup
 issue at the host's default simulation frequency. Hosted CI validates builds,

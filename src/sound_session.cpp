@@ -72,6 +72,9 @@ const std::vector<SoundSession::Preset> &SoundSession::presets() {
             else if(id=="porsche_911_gt3") {
                 preset.title="Porsche 911 GT3 4.0";preset.detail="Flat-six / approximate model";preset.simulationHz=5000;
             }
+            else if(id=="porsche_911_gt3_sprint") {
+                preset.title="Porsche GT3 Sprint";preset.detail="Arcade tune / lightweight / 7-speed";preset.simulationHz=5000;
+            }
             else if(id=="porsche_911_carrera_32") {
                 preset.title="Porsche 911 Carrera 3.2";preset.detail="Flat-six / approximate model";
             }
