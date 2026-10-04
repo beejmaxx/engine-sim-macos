@@ -312,6 +312,7 @@ public:
     void road(const State &s,const EngineVisualLayout &layout,const EngineVisualSnapshot &v,float rpm,float fps) {
         (void)layout;
         const auto &game=roadScene.carPose();
+        const bool city=game.world==DrivingWorld::City;
         const UiRect view{0,0,Width,Height};
         const auto top=color(0x21374E),bottom=color(0xE3B38C);
         // Smooth vertex-color gradient, cached geometry and a single draw.
@@ -334,28 +335,53 @@ public:
             quad({0,Height-240+i*10.f,Width,10},color(0x091321,.65f*i/24));
         }
         text("ENGINE SIMULATOR  /  DRIVE",26,24,0,0xD1DDE4);
-        text(s.title.data(),24,44,2);text("ARCADE DRIVE / 3 LAP TIME TRIAL",26,74,0,0xD1DDE4);
+        text(s.title.data(),24,44,2);text(city ? "PORTSIDE CITY / FREE ROAM" : "ARCADE DRIVE / 3 LAP TIME TRIAL",26,74,0,0xD1DDE4);
         if(s.carBody==State::CarBody::Concept)text("CONCEPT BODY",26,94,0,Dim);
         button(Library,"ENGINES [E]",s);button(RoadView,"DASH [V]",s);
+        button(WorldView,s.world==DrivingWorld::City ? "CITY [T]" : "CIRCUIT [T]",s,true);
         char label[96];std::snprintf(label,sizeof(label),"%.0f FPS  /  %s",fps,s.missing ? "AUDIO GAPS" : "AUDIO OK");right(label,1254,68,0,s.missing ? Red : 0xD1DDE4);
         std::snprintf(label,sizeof(label),"%.2f KM",v.vehicleDistance/1000);right(label,1254,89,0,0xD1DDE4);
         rounded({990,116,266,180},8,color(0x0C1721,.68f));
         const auto &course=roadScene.course();const auto &path=course.points();
         DrivingPoint lo=path.front(),hi=lo;
-        for(const auto &p:path) {lo.x=std::min(lo.x,p.x);lo.z=std::min(lo.z,p.z);hi.x=std::max(hi.x,p.x);hi.z=std::max(hi.z,p.z);}
+        if(city) {lo={-DrivingCity::Extent,-DrivingCity::Extent};hi={DrivingCity::Extent,DrivingCity::Extent};}
+        else for(const auto &p:path) {lo.x=std::min(lo.x,p.x);lo.z=std::min(lo.z,p.z);hi.x=std::max(hi.x,p.x);hi.z=std::max(hi.z,p.z);}
         const double mapScale=std::min(234/(hi.x-lo.x),148/(hi.z-lo.z));
         auto map=[&](DrivingPoint p) {return simd_float2{1123+float((p.x-(lo.x+hi.x)*.5)*mapScale),206-float((p.z-(lo.z+hi.z)*.5)*mapScale)};};
-        for(int i=0;i<DrivingCourse::Segments;++i) {const auto a=map(path[i]),b=map(path[i+1]);line(a.x,a.y,b.x,b.y,3,color(Ink,.45f));}
-        const auto checkpoint=map(course.at(game.nextCheckpoint*course.length()/8).point);
-        circle(checkpoint.x,checkpoint.y,4,color(Blue));const auto position=map({game.x,game.z});
+        if(city) {
+            for(const auto &building:drivingCity().buildings()) {
+                const auto a=map(building.lo),b=map(building.hi);
+                quad({a.x,b.y,b.x-a.x,a.y-b.y},color(0xA2B4BD,.38f));
+            }
+            for(int i=-DrivingCity::GridRadius;i<=DrivingCity::GridRadius;++i) {
+                const double at=i*DrivingCity::Block;const float width=i==0 ? 4 : 2;
+                const auto a=map({at,-DrivingCity::Extent}),b=map({at,DrivingCity::Extent});
+                const auto c=map({-DrivingCity::Extent,at}),d=map({DrivingCity::Extent,at});
+                line(a.x,a.y,b.x,b.y,width,color(Ink,.6f));line(c.x,c.y,d.x,d.y,width,color(Ink,.6f));
+            }
+        } else for(int i=0;i<DrivingCourse::Segments;++i) {const auto a=map(path[i]),b=map(path[i+1]);line(a.x,a.y,b.x,b.y,3,color(Ink,.45f));}
+        const auto checkpoint=map(city ? DrivingCity::Destinations[game.cityStops%DrivingCity::Destinations.size()] : course.at(game.nextCheckpoint*course.length()/8).point);
+        circle(checkpoint.x,checkpoint.y,5,color(city ? 0x65DAB0 : Blue));const auto position=map({game.x,game.z});
         const float heading=float(game.yaw),c=std::cos(heading),si=std::sin(heading);
         triangle({position.x+si*7,position.y-c*7},{position.x-c*4-si*3,position.y-si*4+c*3},
             {position.x+c*4-si*3,position.y+si*4+c*3},color(game.offroad ? Yellow : Ink));
-        text("LAP",26,114,0,Dim);std::snprintf(label,sizeof(label),"%u / 3",std::min(3u,game.laps+1));text(label,26,135,3);
         auto timeLabel=[&](double seconds) {std::snprintf(label,sizeof(label),"%02d:%05.2f",int(seconds)/60,std::fmod(seconds,60));};
+        if(city) {
+            text("CITY TOUR",26,114,0,Dim);std::snprintf(label,sizeof(label),"%u",game.cityStops);text(label,26,135,3);
+            text("DISTANCE",154,114,0,Dim);std::snprintf(label,sizeof(label),"%.2f KM",game.cityDistance/1000);text(label,154,137,2);
+            text(DrivingCity::district({game.x,game.z}),26,178,0,0xD1DDE4);
+            if(!game.recovering) {
+                rounded({495,111,290,92},8,color(0x0C1721,.82f));
+                centered("NEXT CITY SPOT",640,123,1,0x65DAB0);
+                std::snprintf(label,sizeof(label),"%.0f M",game.destinationDistance);centered(label,640,148,2);
+                centered("Explore or follow the green marker",640,181,0,0xD1DDE4);
+            }
+        } else {
+        text("LAP",26,114,0,Dim);std::snprintf(label,sizeof(label),"%u / 3",std::min(3u,game.laps+1));text(label,26,135,3);
         text("CURRENT",154,114,0,Dim);timeLabel(game.lapSeconds);text(label,154,137,2);
         text("BEST",330,114,0,Dim);if(game.bestLap>0)timeLabel(game.bestLap);else std::snprintf(label,sizeof(label),"--:--.--");text(label,330,137,2);
         std::snprintf(label,sizeof(label),"CHECKPOINT %u / 8",game.nextCheckpoint);text(label,26,178,0,0xD1DDE4);
+        }
         if(game.cornerDirection && !game.recovering && !game.finished && !game.wrongWay) {
             const bool slow=game.speed>game.cornerSpeed+1.5;
             const bool brakeNow=slow && game.cornerDeceleration>6;
@@ -368,9 +394,9 @@ public:
         }
         if(game.wrongWay || game.recovering || game.finished) {
             rounded({435,165,410,82},8,color(0x0C1721,.85f));
-            centered(game.finished ? "TIME TRIAL COMPLETE" : game.recovering ? "RECOVERING CAR" : "WRONG WAY",640,180,2,game.wrongWay ? Red : Ink);
+            centered(s.world!=game.world ? "SWITCHING MAP" : game.finished ? "TIME TRIAL COMPLETE" : game.recovering ? "RECOVERING CAR" : "WRONG WAY",640,180,2,game.wrongWay ? Red : Ink);
             if(game.finished) {timeLabel(game.raceSeconds);centered(label,640,211,1);}
-            else centered(game.recovering ? "Returning to the last checkpoint" : "Turn around to continue your lap",640,214,0);
+            else centered(game.recovering ? (city ? "Returning to a nearby street" : "Returning to the last checkpoint") : "Turn around to continue your lap",640,214,0);
         }
         if(game.impact>.05)quad(view,color(Red,float(game.impact*.13)));
         if(s.loading || !s.ready)centered(s.loading ? "LOADING ENGINE..." : "ENGINE UNAVAILABLE",640,180,2);
@@ -401,8 +427,8 @@ public:
         button(Start,s.ignitionRequested ? "STOP [X]" : "START [X]",s);
         button(Rev,"GAS [W]",s,s.revHeld);button(Brake,"BRAKE SPACE",s,s.brakeHeld);
         button(Drift,"DRIFT [SHIFT]",s,s.driftHeld);button(Mute,s.muted ? "UNMUTE" : "MUTE [M]",s,s.muted);
-        button(RecoverCar,"RECOVER [C]",s);button(RestartRace,"NEW RUN [BKSP]",s);
-        if(game.offroad)text("ON THE SHOULDER",24,605,0,Yellow);
+        button(RecoverCar,"RECOVER [C]",s);button(RestartRace,city ? "RESET [BKSP]" : "NEW RUN [BKSP]",s);
+        if(game.offroad)text(city ? "PAVEMENT / OPEN GROUND" : "ON THE SHOULDER",24,605,0,Yellow);
         if(!game.wrongWay && !game.recovering && !game.finished &&
             (game.driftScore>1 || (game.lastDriftScore>1 && game.time-game.driftEndedAt<2))) {
             const bool active=game.driftScore>1;
@@ -868,7 +894,7 @@ void SoundMetalRenderer::stop() {
     m_impl->session.reset();
 }
 void SoundMetalRenderer::update(const State &state) {
-    m_impl->game.controls(state.steering,state.roadView && state.ready,state.testPilot,state.testKeyboard,state.driftHeld);
+    m_impl->game.controls(state.steering,state.roadView && state.ready,state.testPilot,state.testKeyboard,state.driftHeld,state.world);
     std::lock_guard<std::mutex> lock(m_impl->stateMutex);m_impl->state=state;
 }
 void SoundMetalRenderer::recoverCar() {m_impl->game.recover();}

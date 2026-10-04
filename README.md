@@ -9,7 +9,7 @@ built on [Carles Onielfa's Open Engine Simulator](https://github.com/carlesoniel
 The original simulation, sounds, and visual design are their work. This fork
 focuses on responsive sound and a native Mac interface.
 
-![The Porsche 911 GT3 driving view](docs/images/driving-gt3.png)
+![Porsche 911 GT3 in Portside City](docs/images/driving-gt3.png)
 
 [See the piston cutaway view](docs/images/porsche-gt3.png).
 
@@ -23,6 +23,10 @@ focuses on responsive sound and a native Mac interface.
   launch and up/downshifts, and briefly cuts throttle during a shift. Braking
   cuts the accelerator, prevents new upshifts, and downshifts for engine braking.
 - Clear native Mac monospaced text, rasterized once into a Retina font atlas.
+- Portside City: a free-roam street grid about 1.1 km across, with 49
+  intersections, buildings, alleys, open plazas and a waterfront promenade.
+  A city minimap and optional green destinations give you places to explore.
+  **T** switches between the city and forest circuit after stopping the car.
 - A closed forest circuit with arcade steering, off-road resistance and
   barrier collisions. A three-lap time trial has ordered checkpoints, lap/best
   timers, a finish state and a minimap. Recover to the last checkpoint or start
@@ -73,7 +77,7 @@ cd engine-sim-macos
 cmake --preset macos-arm64-package
 cmake --build --preset macos-arm64-package --parallel 4
 cmake --install build/macos-arm64-package --prefix "$PWD/dist"
-./run-sound-gui.sh --preset porsche_911_gt3 --play --drive --road
+./run-sound-gui.sh --preset porsche_911_gt3 --play --drive --city
 ```
 
 If Xcode 26 reports a missing Metal Toolchain, install that component with
@@ -102,8 +106,9 @@ as the app, avoiding a dependency on a newer Homebrew binary's minimum OS.
 | **Hold Space** in the game, **S** on the dashboard, or **BRAKE** | Brake without changing direction; overrides throttle |
 | **A / D** or **Left / Right** in the game | Steer; releasing returns the wheels toward centre |
 | **Hold Shift** or **DRIFT** while steering | Assisted slide above about 15 mph; release to straighten and bank points |
-| **C** or **RECOVER** | Stop and return to the last checkpoint; adds a 3-second penalty |
-| **Backspace** or **NEW RUN** | Stop and restart the three-lap time trial |
+| **T** or the CITY / CIRCUIT button | Switch maps; the car stops before moving to the other map |
+| **C** or **RECOVER** | Return to a nearby city street, or the last circuit checkpoint (3-second circuit penalty) |
+| **Backspace** or **RESET / NEW RUN** | Stop, reset the city trip or restart the circuit time trial |
 | **V** or the view button | Switch between the driving scene and engine dashboard |
 | Drag the throttle track | Set a persistent throttle position |
 | **I** | Return to idle |
@@ -139,14 +144,21 @@ free revving. Manual gear/clutch changes and the dyno leave automatic mode.
 This is automatic control of the existing simulated clutch/gearbox, not a
 separate torque-converter model.
 
-Press **V** to enter the game, or launch with `--road`. **WASD** and the arrow
-keys drive; **G** toggles Drive/neutral. Drive the forest circuit,
+Press **V** to enter the game, or launch with `--road` / `--city`. The city is
+the default driving map. **WASD** and the arrow keys drive; **G** toggles
+Drive/neutral. Explore the connected streets and open plazas, or follow the green
+marker to collect city-tour stops. There is no time limit or wrong-way rule in
+the city. **C** returns you to a nearby street after braking to a stop.
+
+Press **T** or launch with `--circuit` for the forest time trial. Drive the circuit,
 pass all eight checkpoints in order, and complete three laps. Brake before tight
 corners; leaving the asphalt increases resistance, while steering stays forgiving. Recovery
 adds a three-second penalty and returns you to the last passed checkpoint. The
 GT3 preset uses the Porsche body; other presets use the concept car. Handling
 is deliberately arcade-style. Car and scenery credits are in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The city currently has static scenery and optional tour markers; traffic and
+pedestrians are not implemented.
 
 For the terminal interface without graphics, run `./run-sound.sh`. For the
 line-oriented audio host, run `./run-audio.sh --help`.
@@ -165,7 +177,7 @@ python3 test/sound_gui_smoke.py --presets porsche_911_gt3 porsche_911_carrera_32
 # Hidden native input + Metal render tests; requires a logged-in Mac desktop.
 python3 test/sound_gui_smoke.py --native-only
 
-# Brief reverse, drift, audio and deliberate UI/render-stall test.
+# Brief city driving, reverse, drift and deliberate UI/render-stall test.
 python3 test/sound_gui_smoke.py --arcade-only --presets porsche_911_gt3
 ```
 

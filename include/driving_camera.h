@@ -20,9 +20,10 @@ public:
     static constexpr double SunRadius=.00465;
 
     void update(const DrivingSnapshot &pose,double dt) {
-        const bool reset=!ready || pose.time<lastTime || pose.recoveries!=lastRecovery;
+        const bool reset=!ready || pose.time<lastTime || pose.recoveries!=lastRecovery || pose.world!=lastWorld;
         // Follow travel through a drift and look behind the car in reverse.
         const double target=drivingAngle(pose.yaw+pose.driftAngle+(pose.reversing ? 3.141592653589793 : 0));
+        lastWorld=pose.world;
         if(reset) {yaw=target;ready=true;}
         else if(std::isfinite(dt) && dt>0)
             yaw=drivingAngle(yaw+drivingAngle(target-yaw)*(1-std::exp(-std::min(dt,.1)*16)));
@@ -51,6 +52,7 @@ private:
     static Vector cross(Vector a,Vector b) {return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};}
     double yaw=0,lastTime=-1;
     unsigned lastRecovery=0;
+    DrivingWorld lastWorld=DrivingWorld::Circuit;
     bool ready=false;
 };
 #endif

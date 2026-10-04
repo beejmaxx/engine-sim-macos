@@ -4,18 +4,9 @@
 #include <cmath>
 #include <cstdint>
 #include "driving_handling.h"
+#include "driving_city.h"
 
 // Game geometry and handling have no device, GUI, GPU or engine dependencies.
-struct DrivingPoint {
-    double x=0,z=0;
-    DrivingPoint operator+(DrivingPoint p) const {return {x+p.x,z+p.z};}
-    DrivingPoint operator-(DrivingPoint p) const {return {x-p.x,z-p.z};}
-    DrivingPoint operator*(double s) const {return {x*s,z*s};}
-};
-inline double drivingDot(DrivingPoint a,DrivingPoint b) {return a.x*b.x+a.z*b.z;}
-inline double drivingLength(DrivingPoint p) {return std::hypot(p.x,p.z);}
-inline double drivingAngle(double a) {return std::remainder(a,6.283185307179586);}
-
 class DrivingCourse {
 public:
     static constexpr int Segments=360;
@@ -35,12 +26,15 @@ private:
 };
 
 struct DrivingSnapshot {
+    DrivingWorld world=DrivingWorld::Circuit;
     double time=0,x=0,z=0,yaw=0,velocityYaw=0,speed=0,wheelDistance=0;
     double steer=0,steeringInput=0,roll=0,pitch=0,lateralG=0,progress=0,lateral=0,offroadFraction=0;
     double lapSeconds=0,lastLap=0,bestLap=0,raceSeconds=0,roadDeceleration=0,impact=0;
     double cornerSpeed=80,cornerDistance=0,cornerDeceleration=0;
     double driftAngle=0,driftScore=0,totalDriftScore=0,bestDriftScore=0,lastDriftScore=0,driftEndedAt=0;
     int cornerDirection=0;
+    double cityDistance=0,destinationDistance=0;
+    unsigned cityStops=0;
     unsigned laps=0,nextCheckpoint=1,collisions=0,recoveries=0;
     uint64_t steps=0;
     bool offroad=false,wrongWay=false,started=false,finished=false,recovering=false,reversing=false;
@@ -48,11 +42,12 @@ struct DrivingSnapshot {
 
 class DrivingGame {
 public:
-    DrivingGame();
+    explicit DrivingGame(DrivingWorld world=DrivingWorld::Circuit);
     const DrivingCourse &course() const {return track;}
     const DrivingSnapshot &snapshot() const {return state;}
     void restart();
     void recover();
+    void setWorld(DrivingWorld world);
     // dt and distance come from the engine's clock/vehicle travel, not frames.
     void advance(double dt,double distance,double speed,double steering,DrivingHandling::Input input=DrivingHandling::Input::Analog,bool drift=false);
     double pilotSteering() const;
@@ -65,5 +60,6 @@ private:
     double lapStart=0,previousProgress=0,impactSeconds=0,recoverySeconds=0;
     double motionYaw=0;
     bool newRacePending=false;
+    DrivingWorld pendingWorld=DrivingWorld::Circuit;
 };
 #endif

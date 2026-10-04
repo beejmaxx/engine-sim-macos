@@ -59,8 +59,9 @@ positive; a separate signed displacement feeds the game and wheel motion.
 
 ## Driving game
 
-`V` switches between the game and engine dashboard. `--road` selects the game
-on launch. A/D or left/right steer, R/W/up accelerate, S/down brake then reverse,
+`V` switches between the game and engine dashboard. `--road` / `--city` selects
+city driving on launch; `--circuit` selects the forest course. `T` changes maps.
+A/D or left/right steer, R/W/up accelerate, S/down brake then reverse,
 Space only brakes, Shift drifts, X
 operates ignition, C recovers, and
 Backspace starts a new run. Pedals and steering release on focus loss. The game
@@ -68,6 +69,35 @@ reserves arrow keys for driving even when a dashboard slider previously had focu
 WASD steering cannot change Drive or the dyno; `G` toggles Drive in the game.
 Held aliases release independently, so releasing D while right-arrow is held
 does not centre the steering. Dashboard A/D retain their gearbox/dyno actions.
+
+The city is a free-roam map, 1,100 metres across, with seven streets in each
+direction and 49 connected intersections. Main avenues are 36 metres wide;
+other streets are 24 metres wide. `DrivingCity` supplies the same immutable
+geometry to the game, renderer and minimap: 136 building footprints, alleys,
+two open plazas, and a visible perimeter sea wall. There are no circuit barriers
+across intersections. Four tyre contact patches blend road/sidewalk resistance;
+two circles approximate the car body against building rectangles and the boundary.
+Building impacts apply the existing bounded road load and redirect into a scrape.
+Recovery first stops the real vehicle, then places it on a nearby clear street.
+
+City destinations cycle through eight fixed street locations. Entering the green
+marker advances the city-tour counter; there is no lap timer or wrong-way rule.
+The city HUD shows trip distance, district, destination distance, a street/building
+minimap, speed, RPM, gear and drift scores. City/circuit switching releases held
+controls and brakes before changing position; it never reloads the engine.
+The camera, skid buffer and pose interpolation reset when the map changes.
+
+City buildings, sidewalks, road markings and lamps are generated and cached
+before live audio starts. Metre-scaled facade windows use the existing Metal
+scenery draw with procedural shading. Geometry is culled on the render worker,
+and scenery work never runs on the engine thread or in the audio callback.
+The scene still uses three draws (scenery, car, HUD). Trees and car bodies use
+the same credited assets as the circuit.
+
+For the city performance benchmark, pass `--city --drive --benchmark PREFIX
+--seconds 20`; the validation driver accelerates along the starting avenue and
+brakes to a stop. The legacy benchmark defaults to the circuit when no map is
+specified. `--game-test` always uses the circuit lap/impact/recovery sequence.
 
 `engine-sim-driving` is a device-independent library with a closed Catmull-Rom
 forest circuit in metres and an arcade chassis. It uses speed-sensitive steering,
@@ -139,15 +169,16 @@ the scene. The dashboard uses one draw call; the game uses three (scenery, car, 
 PNG encoding runs on a utility queue after GPU readback. See
 [asset credits](../THIRD_PARTY_NOTICES.md) for sources/licenses.
 
-The game has one circuit, GT3 and concept bodies, forward/reverse driving,
-assisted drifting and a time trial mode. It does not yet have opponents, a city,
+The game has a free-roam city, one circuit, GT3 and concept bodies,
+forward/reverse driving, assisted drifting and a circuit time trial mode.
+It does not yet have traffic, pedestrians, opponents,
 a physical handbrake model or matching
 bodies for every engine. The game/test pilot is only enabled by validation flags,
 never normal play.
 
 ## Programmatic checks
 
-For a short reverse/drift test with programmatic Metal captures and PCM checks:
+For a short city/reverse/drift test with programmatic Metal captures and PCM checks:
 
 ```sh
 python3 test/sound_gui_smoke.py --arcade-only --presets porsche_911_gt3
@@ -155,11 +186,14 @@ python3 test/sound_gui_smoke.py --arcade-only --presets porsche_911_gt3
 python3 test/sound_gui_smoke.py --arcade-only --real-audio --presets porsche_911_gt3
 ```
 
-This accelerates, slides, brakes, reverses, returns to forward drive, and stops
+This drives in the city, slides, brakes, reverses, returns to forward drive, and stops
 at idle. It deliberately stalls AppKit and rendering for 1.2 seconds each,
 checks continued game/audio updates, and requires a completed JSON report and
 `ARCADE_RESULT=PASS`. The native input suite separately checks Shift/mouse
-overlap, key release and focus loss. Core runtime tests exercise direction
+overlap, key release, focus loss and city/circuit switching while the engine runs.
+Core game tests cover all street connections, building contacts, recovery,
+ordered city destinations and a driving route through multiple intersections.
+Core runtime tests exercise direction
 interlocks, reverse speed, braking and idle with both Supra and GT3 engines.
 
 The Python smoke harness uses SDL's dummy audio device by default. It is silent.
@@ -383,6 +417,22 @@ frames, silent PCM blocks, clipped/invalid samples or Metal errors. Rendering
 averaged 55.04 FPS including the deliberate rendering pause, with 0.60 ms mean
 CPU work and 3.69 ms mean GPU time at 2560×1600. The maximum mixer callback gap
 was 11.71 ms; this is a callback-cadence measurement, not speaker latency.
+
+The city update passed 84 portable tests, 92 packaged tests and the native
+input/render suite across seven engines, including city/circuit switching without
+restarting the engine or losing audio frames. A separate
+20.02-second GT3 city benchmark at 2560×1600, with effects enabled and dummy
+audio, completed 1,201 frames: **60.00 FPS**, 0.60 ms mean CPU work and 3.83 ms
+mean GPU time (GPU p95 at or below 7.25 ms). It covered 253.05 metres, stopped
+under the simulated brakes, and rendered 72 frames during a 1.2-second AppKit
+stall. No missing audio frames, write errors or Metal errors were recorded.
+
+The real CoreAudio city/reverse/drift test measured 14.30 seconds after startup,
+including separate 1.2-second UI and render stalls. It recorded **zero missing
+audio frames, unexpected silent PCM blocks, clipped/invalid samples or Metal
+errors**. Mean CPU/GPU work was 0.62/4.57 ms; the measured 55.03 FPS includes
+the deliberate render pause. Maximum mixer callback gap was 11.80 ms. These
+local M1 checks measure software output and rendering, not acoustic speaker latency.
 
 See [ENGINES.md](ENGINES.md) for model limitations, including the radial-9 startup
 issue at the host's default simulation frequency. Hosted CI validates builds,

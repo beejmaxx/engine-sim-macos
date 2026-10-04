@@ -239,6 +239,103 @@ TEST(DrivingCamera, SunRotatesWithViewAndDisappearsBehindCamera) {
     pose.yaw=3.141592653589793;back.update(pose,1./60);
     EXPECT_FALSE(back.sun(1280,800).visible);
 }
+TEST(DrivingCity, StreetsIntersectionsAndPlazasAreOpenForDriving) {
+    const auto &city=drivingCity();
+    ASSERT_GT(city.buildings().size(),100u);
+    for(int i=-3;i<=3;++i)for(double along=-510;along<=510;along+=3) {
+        for(auto p:{DrivingPoint{i*160.+5,along},DrivingPoint{along,i*160.-5}}) {
+            EXPECT_FALSE(city.occupied(p,2.3));
+            EXPECT_LT(city.roadDistance(p),0);
+            const auto surface=city.tyreSurface(p,.7);
+            EXPECT_EQ(surface.front,0);EXPECT_EQ(surface.rear,0);
+        }
+    }
+    for(auto p:{DrivingPoint{-80,-80},DrivingPoint{240,240}}) {
+        EXPECT_FALSE(city.occupied(p,12));EXPECT_LT(city.roadDistance(p),-20);
+    }
+}
+TEST(DrivingCity, BodyContactsResolveAtBuildingEdgesAndWorldBoundary) {
+    const auto &city=drivingCity();
+    for(const auto &b:city.buildings())for(double yaw:{0.,.7,1.57,3.14}) {
+        DrivingPoint p{b.lo.x+.5,(b.lo.z+b.hi.z)*.5};
+        EXPECT_TRUE(city.constrain(p,yaw).hit);
+        const DrivingPoint forward{std::sin(yaw),std::cos(yaw)};
+        EXPECT_FALSE(city.occupied(p+forward*1.05,1.11));
+        EXPECT_FALSE(city.occupied(p-forward*1.05,1.11));
+    }
+    for(auto p:{DrivingPoint{551,0},DrivingPoint{0,-551},DrivingPoint{551,551}}) {
+        EXPECT_TRUE(city.constrain(p,0).hit);
+        EXPECT_LE(std::abs(p.x),550);EXPECT_LE(std::abs(p.z),550);
+    }
+}
+TEST(DrivingCity, RecoveryFindsNearbyStreetOutsideAllBuildings) {
+    const auto &city=drivingCity();
+    for(const auto &building:city.buildings()) {
+        const auto start=(building.lo+building.hi)*.5;
+        const auto spawn=city.nearestStreet(start,.4);
+        EXPECT_FALSE(city.occupied(spawn.point,2.5));
+        EXPECT_LT(city.roadDistance(spawn.point),-5);
+        EXPECT_LT(drivingLength(spawn.point-start),90);
+    }
+}
+TEST(DrivingGame, CityFreeRoamVisitsSpotsAndAllowsReverseWithoutLapRules) {
+    DrivingGame game(DrivingWorld::City);
+    for(int i=0;i<2400;++i)game.advance(1./120,15./120,15,0);
+    auto p=game.snapshot();EXPECT_EQ(p.world,DrivingWorld::City);
+    EXPECT_NEAR(p.cityDistance,300,1e-7);EXPECT_NEAR(p.z,-70,.01);
+    EXPECT_EQ(p.cityStops,1u);EXPECT_EQ(p.collisions,0u);EXPECT_EQ(p.laps,0u);
+    for(int i=0;i<1200;++i)game.advance(1./120,-5./120,-5,0);
+    p=game.snapshot();EXPECT_TRUE(p.reversing);EXPECT_FALSE(p.wrongWay);
+    EXPECT_EQ(p.cityStops,1u);EXPECT_NEAR(p.cityDistance,350,1e-7);
+    game.recover();game.advance(.01,-.05,-5,0);EXPECT_TRUE(game.snapshot().recovering);
+    game.advance(.01,0,0,0);EXPECT_FALSE(game.snapshot().recovering);
+    EXPECT_EQ(game.snapshot().cityStops,1u);
+    EXPECT_FALSE(drivingCity().occupied({game.snapshot().x,game.snapshot().z},2.3));
+}
+TEST(DrivingGame, CityIntersectionsAllowTurnsOntoConnectingStreets) {
+    DrivingGame game(DrivingWorld::City);
+    const DrivingPoint route[]={{5,-160},{20,-165},{145,-165},{165,-145},{165,-5},
+        {185,-5},{295,-5},{315,15},{315,140},{315,165},{290,165},{25,165},{5,145},{5,-350}};
+    size_t waypoint=0;double farthest=0;
+    for(int i=0;i<24000 && waypoint<std::size(route);++i) {
+        const auto &p=game.snapshot();const auto delta=route[waypoint]-DrivingPoint{p.x,p.z};
+        const double d=drivingLength(delta);if(d<7){++waypoint;continue;}
+        const double bearing=drivingAngle(std::atan2(delta.x,delta.z)-p.yaw);
+        const double curve=2*std::sin(bearing)/std::max(8.0,std::min(16.0,d));
+        game.advance(1./120,10./120,10,std::clamp(curve/DrivingHandling::maximumCurvature(10),-1.,1.));
+        farthest=std::max(farthest,p.x);
+    }
+    EXPECT_EQ(waypoint,std::size(route));EXPECT_GT(farthest,310);
+    EXPECT_EQ(game.snapshot().collisions,0u);EXPECT_GT(game.snapshot().cityDistance,1400);
+    EXPECT_GE(game.snapshot().cityStops,3u);
+}
+TEST(DrivingGame, MapSwitchBrakesBeforeMovingToTheOtherWorld) {
+    DrivingGame game(DrivingWorld::City);game.advance(.1,3,30,0);
+    const auto before=game.snapshot();game.setWorld(DrivingWorld::Circuit);
+    EXPECT_TRUE(game.snapshot().recovering);EXPECT_EQ(game.snapshot().world,DrivingWorld::City);
+    EXPECT_EQ(game.snapshot().z,before.z);
+    game.advance(.01,.3,30,0);EXPECT_EQ(game.snapshot().roadDeceleration,45);
+    game.advance(.01,0,0,0);EXPECT_EQ(game.snapshot().world,DrivingWorld::Circuit);
+    EXPECT_FALSE(game.snapshot().recovering);EXPECT_LT(std::abs(game.snapshot().z),5);
+    game.setWorld(DrivingWorld::City);EXPECT_EQ(game.snapshot().world,DrivingWorld::City);
+    EXPECT_EQ(game.snapshot().z,DrivingCity::start().point.z);
+}
+TEST(DrivingGame, CityBuildingImpactAddsLoadAndRecoveryReturnsToStreet) {
+    DrivingGame game(DrivingWorld::City);bool impactLoad=false;
+    for(int i=0;i<480;++i) {
+        game.advance(1./120,15./120,15,1);
+        const auto &p=game.snapshot();
+        EXPECT_FALSE(drivingCity().occupied({p.x,p.z}));
+        impactLoad |= p.collisions>0 && p.roadDeceleration>5;
+    }
+    EXPECT_GT(game.snapshot().collisions,0u);EXPECT_TRUE(impactLoad);
+    game.recover();const auto before=game.snapshot();
+    game.advance(.01,.15,15,0);EXPECT_TRUE(game.snapshot().recovering);
+    EXPECT_EQ(game.snapshot().recoveries,before.recoveries);EXPECT_EQ(game.snapshot().roadDeceleration,45);
+    game.advance(.01,0,0,0);
+    EXPECT_EQ(game.snapshot().recoveries,before.recoveries+1);EXPECT_FALSE(game.snapshot().recovering);
+    EXPECT_LT(drivingCity().roadDistance({game.snapshot().x,game.snapshot().z}),-5);
+}
 TEST(DrivingGame, ReverseUsesSignedEngineTravelAndOppositeSteering) {
     DrivingGame game;const auto start=game.snapshot();
     for(int i=0;i<120;++i)game.advance(1./120,-5./120,-5,0);

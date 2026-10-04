@@ -11,8 +11,8 @@ void DrivingGameWorker::stop() {running=false;if(thread.joinable())thread.join()
 void DrivingGameWorker::connect(std::shared_ptr<SoundSession> value) {
     std::lock_guard<std::mutex> lock(sessionMutex);session=std::move(value);++generation;
 }
-void DrivingGameWorker::controls(double value,bool active,bool testPilot,bool keyboardTest,bool drifting) {
-    steering=std::isfinite(value) ? std::clamp(value,-1.0,1.0) : 0;enabled=active;pilot=testPilot;keyboardPilot=keyboardTest;drift=drifting;
+void DrivingGameWorker::controls(double value,bool active,bool testPilot,bool keyboardTest,bool drifting,DrivingWorld map) {
+    steering=std::isfinite(value) ? std::clamp(value,-1.0,1.0) : 0;enabled=active;pilot=testPilot;keyboardPilot=keyboardTest;drift=drifting;world=map;
 }
 DrivingSnapshot DrivingGameWorker::snapshot() const {std::lock_guard<std::mutex> lock(poseMutex);return current;}
 DrivingSnapshot DrivingGameWorker::presented() const {
@@ -40,12 +40,13 @@ void DrivingGameWorker::run() {
             std::lock_guard<std::mutex> lock(sessionMutex);
             if(seen!=generation) {
                 if(audio)audio->setRoadDeceleration(0);
-                audio=session;seen=generation;game=DrivingGame{};last={};requests=0;keyboardAt=keyboardInput=0;
+                audio=session;seen=generation;game=DrivingGame{world.load()};last={};requests=0;keyboardAt=keyboardInput=0;
                 if(audio)audio->vehicleTelemetry(last);
                 std::lock_guard<std::mutex> poses(poseMutex);previous=current=game.snapshot();published=begin;
             }
         }
         const auto action=requests.exchange(0);
+        game.setWorld(world.load());
         if(action&2)game.restart();else if(action&1)game.recover();
         AudioEngineRunner::VehicleTelemetry next;
         if(audio && audio->vehicleTelemetry(next) && next.time>last.time) {
@@ -62,7 +63,7 @@ void DrivingGameWorker::run() {
             last=next;speedTarget=pilot ? game.pilotSpeed() : 0;
             std::lock_guard<std::mutex> lock(poseMutex);
             previous=current;current=game.snapshot();
-            if(current.time<=previous.time || current.recoveries!=previous.recoveries)previous=current;
+            if(current.time<=previous.time || current.recoveries!=previous.recoveries || current.world!=previous.world)previous=current;
             published=std::chrono::steady_clock::now();
         }
         cpuMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count();

@@ -26,6 +26,21 @@ fragment float4 sound_fragment(Raster in [[stage_in]], texture2d<float> atlas [[
             if(sample.a<.4)discard_fragment();
             color*=sample.rgb;alpha=1;
         }
+        if(in.kind==7 || in.kind==8) {
+            float2 wall=in.uv*distance,cell=wall/float2(3.2,3.5);
+            float2 f=fract(cell),aa=max(fwidth(cell),float2(.007));
+            float2 window=smoothstep(float2(.14),float2(.14)+aa,f)*(1-smoothstep(float2(.86)-aa,float2(.86),f));
+            float mask=window.x*window.y*smoothstep(1.25,1.5,wall.y);
+            float variation=fract(sin(dot(floor(cell),float2(12.9898,78.233)))*43758.5453);
+            float3 glass=mix(float3(.13,.22,.29),float3(.38,.52,.59),clamp(wall.y/65.0,0.0,1.0));
+            if(variation>.94)glass=float3(.73,.66,.43);
+            if(in.kind==8)color=mix(color*.75,glass,.9*mask);
+            else color=mix(color,glass,mask*.92);
+        }
+        if(in.kind==9) {
+            float2 world=in.uv*distance;
+            color*=.95+.05*sin(world.x*.3+world.y*.18);
+        }
         if (in.kind == 4 || in.kind == 5) {
             // Perspective-correct, metre-scaled road/ground detail. Distance
             // comes from physics, so the surface stays still when stopped.

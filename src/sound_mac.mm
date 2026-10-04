@@ -19,6 +19,8 @@
 using namespace sound_ui;
 namespace {
 struct Options {
+    DrivingWorld world=DrivingWorld::City;
+    bool worldExplicit=false;
     std::filesystem::path assets;
     std::string log, verify, driveVerify, benchmark, uiTest, gameTest, arcadeTest;
     int preset=0, stall=1000;
@@ -248,12 +250,13 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         _benchAudio={};_benchMetrics={};_testThrottle=_testBrake=-1;
         _state.preset=options.preset;_state.uncapped=options.uncapped;_state.effects=options.effects;
         _state.roadView=options.roadView;
+        _state.world=!options.gameTest.empty() || (!options.benchmark.empty() && !options.worldExplicit) ? DrivingWorld::Circuit : options.world;
         _state.engineCount=SoundSession::presets().size();
         _state.volume=SoundSession::DefaultVolume;
         _state.muted=options.muted;
         _state.silent=std::string(SDL_GetCurrentAudioDriver())=="dummy";
         _state.automated=!options.uiTest.empty() || !options.benchmark.empty() || !options.gameTest.empty() || !options.arcadeTest.empty();
-        _state.testPilot=options.drive && !options.benchmark.empty();
+        _state.testPilot=options.drive && !options.benchmark.empty() && _state.world==DrivingWorld::Circuit;
         if(!options.log.empty())_log.open(options.log);
     }
     return self;
@@ -405,6 +408,13 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         [self publish];return;
     }
     if(_state.loading)return;
+    if(c==WorldView) {
+        [self cancelHeldRev];[self holdBrake:NO source:31];[self holdDrift:NO source:7];
+        [self steer:NO right:NO];[self steer:NO right:YES];
+        _state.world=_state.world==DrivingWorld::City ? DrivingWorld::Circuit : DrivingWorld::City;
+        [self send:AudioEngineRunner::Action::Throttle value:0];_state.throttle=0;
+        [self publish];return;
+    }
     if(c==Library) {
         [self cancelHeldRev];
         const UiRect r=bounds(Library,_state.roadView);
@@ -510,6 +520,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         if(c==' ') {[self holdBrake:YES source:16];return;}
         if(c=='x') {[self activate:Start];return;}
         if(c=='g') {[self activate:Drive];return;}
+        if(c=='t') {[self activate:WorldView];return;}
         if(c=='c') {[self activate:RecoverCar];return;}
         if(c==NSDeleteCharacter || c==NSBackspaceCharacter) {[self activate:RestartRace];return;}
     }
@@ -578,6 +589,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
                 <<" game_x="<<metrics.game.x<<" game_z="<<metrics.game.z
                 <<" signed_mph="<<metrics.game.speed/.44704<<" drift_angle="<<metrics.game.driftAngle<<" drift_score="<<metrics.game.totalDriftScore+metrics.game.driftScore
                 <<" laps="<<metrics.game.laps<<" checkpoint="<<metrics.game.nextCheckpoint
+                <<" city="<<(metrics.game.world==DrivingWorld::City)<<" city_stops="<<metrics.game.cityStops
                 <<" steering="<<_state.steering<<" steering_input="<<metrics.game.steeringInput
                 <<" lateral_g="<<metrics.game.lateralG<<" offroad_fraction="<<metrics.game.offroadFraction
                 <<" collisions="<<metrics.game.collisions
@@ -739,6 +751,16 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         [self check:s.brake==0 name:"mouse_up_outside_releases_brake"];
         [self check:_session->statistics().silenceFrames==0 && _session->statistics().writeErrors==0 name:"no_audio_gaps"];
         [self check:_renderer.captures()>=_expectedCaptures && _renderer.metrics().errors==0 name:"metal_capture"];
+        [self check:_renderer.metrics().game.world==DrivingWorld::City name:"city_is_default_driving_world"];
+        [_view testKey:@"t"];_gamePhaseAt=now();++_testStage;
+    } else if(_testStage==23 && now()-_gamePhaseAt>.6) {
+        [self check:_state.world==DrivingWorld::Circuit && _renderer.metrics().game.world==DrivingWorld::Circuit name:"keyboard_switches_to_circuit"];
+        _renderer.capture((std::filesystem::path(_options.uiTest)/("circuit-engine-"+std::to_string(_testPreset)+".png")).c_str());++_expectedCaptures;
+        [_view testClick:WorldView];_gamePhaseAt=now();++_testStage;
+    } else if(_testStage==24 && now()-_gamePhaseAt>.6) {
+        if(_renderer.captures()<_expectedCaptures && now()-_gamePhaseAt<4)return;
+        [self check:_state.world==DrivingWorld::City && _renderer.metrics().game.world==DrivingWorld::City name:"mouse_switches_back_to_city"];
+        [self check:_session->statistics().silenceFrames==0 && s.ignition && s.rpm>200 name:"map_switch_preserves_engine_and_audio"];
         [_view testClick:RoadView];[self check:!_state.roadView name:"return_from_driving_hud"];
         if(++_testPreset<std::size(testEngines)) {
             [_window setContentSize:NSMakeSize(Width,Height)];
@@ -777,8 +799,8 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         if(_state.roadView && _options.drive) {
             [self check:after.movingRoadFrames>before.movingRoadFrames+30 && after.roadDistance>before.roadDistance+5 name:"car_continues_during_ui_stall"];
         }
-        [_view testKey:@"]"];[self check:_state.layer==std::min(1,_session->visualLayout().maxLayer) name:"cutaway_layer_next"];
-        [_view testKey:@"["];[self check:_state.layer==0 name:"cutaway_layer_back"];
+        [self activate:LayerNext];[self check:_state.layer==std::min(1,_session->visualLayout().maxLayer) name:"cutaway_layer_next"];
+        [self activate:LayerBack];[self check:_state.layer==0 name:"cutaway_layer_back"];
         _testStage=4;
     }
     if(_testStage==4 && t>12) {
@@ -845,6 +867,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     using A=AudioEngineRunner::Action;
     if(_testStage==0 && t>3) {
         [self check:_gameAudio.attach(_session->device()) name:"arcade_pcm_probe_attached"];
+        [self check:metrics.game.world==_state.world name:"arcade_selected_world_active"];
         _benchAt=now();_benchMetrics=metrics;_benchAudio=_session->statistics();
         pedal(A::Throttle,.7);_testStage=1;
     } else if(_testStage==1 && t>4.5) {
@@ -896,6 +919,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     const double seconds=now()-_benchAt;const uint64_t frames=metrics.frames-_benchMetrics.frames;
     std::ofstream report(_options.arcadeTest+".json");
     report<<std::fixed<<std::setprecision(4)<<"{\n  \"result\": \""<<(_passed ? "PASS" : "FAIL")<<"\",\n"
+        <<"  \"world\": \""<<(metrics.game.world==DrivingWorld::City ? "city" : "circuit")<<"\",\n"
         <<"  \"driver\": \""<<SDL_GetCurrentAudioDriver()<<"\",\n  \"seconds\": "<<seconds
         <<",\n  \"render_fps_including_stall\": "<<frames/seconds
         <<",\n  \"cpu_mean_ms\": "<<(metrics.cpuNs-_benchMetrics.cpuNs)/1e6/std::max(uint64_t(1),frames)
@@ -1015,7 +1039,7 @@ int main(int argc,char **argv) {
                 std::string arg=argv[i];
                 if(arg=="--help") {
                     std::cout<<"Engine Sound - native C++ / Metal sound studio\n"
-                        <<"--play --drive --road --uncapped --no-effects --silent --muted --log FILE\n"
+                        <<"--play --drive --road --city --circuit --uncapped --no-effects --silent --muted --log FILE\n"
                         <<"--benchmark PREFIX [--seconds N] [--offscreen] [--uncapped]\n"
                         <<"--ui-test DIRECTORY  Hidden, programmatic input/audio/Metal checks\n"
                         <<"--self-test PREFIX [--preset ID] [--ui-stall-ms 0..1000]\n"
@@ -1023,7 +1047,7 @@ int main(int argc,char **argv) {
                         <<"--arcade-test PREFIX            Reverse, drift, render stalls and PCM checks\n"
                         <<"--drive-test PREFIX [--preset ID]  Acceleration/shifts/braking + PCM capture\n"
                         <<"--list-engines  List the IDs accepted by --preset\n"
-                        <<"Keys: WASD/arrows drive, S/down brake then reverse in game, Shift assisted drift, G drive/neutral in game (A on dashboard), C recover, Backspace new run, Space brake in game / ignition on dashboard, X game ignition, hold R throttle, hold S dashboard brake, V car/pistons, B blip, I idle, M mute, F effects, U frame mode, E library, 1/2 favorites\n";
+                        <<"Keys: WASD/arrows drive, S/down brake then reverse in game, Shift assisted drift, T city/circuit, G drive/neutral in game (A on dashboard), C recover, Backspace new run, Space brake in game / ignition on dashboard, X game ignition, hold R throttle, hold S dashboard brake, V car/pistons, B blip, I idle, M mute, F effects, U frame mode, E library, 1/2 favorites\n";
                     return 0;
                 }
                 if(arg=="--list-engines") {
@@ -1033,6 +1057,8 @@ int main(int argc,char **argv) {
                 if(arg=="--play"){options.play=true;continue;}
                 if(arg=="--drive"){options.drive=true;continue;}
                 if(arg=="--road"){options.roadView=true;continue;}
+                if(arg=="--city"){options.world=DrivingWorld::City;options.worldExplicit=true;options.roadView=true;continue;}
+                if(arg=="--circuit"){options.world=DrivingWorld::Circuit;options.worldExplicit=true;options.roadView=true;continue;}
                 if(arg=="--game-test" && i+1<argc){options.gameTest=argv[++i];options.play=true;options.drive=true;options.roadView=true;continue;}
                 if(arg=="--arcade-test" && i+1<argc){options.arcadeTest=argv[++i];options.play=true;options.drive=true;options.roadView=true;continue;}
                 if(arg=="--uncapped"){options.uncapped=true;continue;}

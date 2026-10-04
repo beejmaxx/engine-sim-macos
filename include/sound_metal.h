@@ -9,7 +9,7 @@
 namespace sound_ui {
 constexpr float Width = 1280, Height = 800;
 enum Control { None = -1, Supra, Ls, Start, Rev, Idle, Throttle, Volume, Exhaust,
-    Roughness, Mute, Reset, Effects, Uncapped, Library, HighFrequency, LowNoise, Dyno, DynoSpeed, Clutch, GearDown, GearUp, LayerBack, LayerNext, Drive, Brake, RoadView, RecoverCar, RestartRace, Drift, ControlCount };
+    Roughness, Mute, Reset, Effects, Uncapped, Library, HighFrequency, LowNoise, Dyno, DynoSpeed, Clutch, GearDown, GearUp, LayerBack, LayerNext, Drive, Brake, RoadView, RecoverCar, RestartRace, Drift, WorldView, ControlCount };
 struct UiRect {
     float x, y, w, h;
     bool contains(float px, float py) const { return px >= x && py >= y && px < x+w && py < y+h; }
@@ -20,6 +20,7 @@ inline UiRect bounds(Control control,bool roadView=false) {
         switch(control) {
         case Library:return {992,24,136,32};
         case RoadView:return {1140,24,116,32};
+        case WorldView:return {824,24,156,32};
         case Drive:return {24,691,132,32};
         case Start:return {24,741,116,35};
         case Rev:return {150,741,90,35};
@@ -82,6 +83,7 @@ struct State {
     float highFrequency=0, lowNoise=0, dynoRpm=1000, clutch=0;
     bool dyno=false, revHeld=false, drive=false, brakeHeld=false, roadView=false,driftHeld=false;
     float steering=0;
+    DrivingWorld world=DrivingWorld::City;
     bool testPilot=false,testKeyboard=false;
     Control hover = None, focus = None, pressed = None;
     bool ready = false, loading = true, ignitionRequested = false, muted = false;
