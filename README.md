@@ -9,9 +9,10 @@ built on [Carles Onielfa's Open Engine Simulator](https://github.com/carlesoniel
 The original simulation, sounds, and visual design are their work. This fork
 focuses on responsive sound and a native Mac interface.
 
-![Porsche 911 GT3 in Portside City](docs/images/driving-gt3.png)
+![Ferrari 458 in Portside City](docs/images/driving-ferrari-458.png)
 
-[See the piston cutaway view](docs/images/porsche-gt3.png).
+[Supra](docs/images/driving-supra.png) · [Corvette](docs/images/driving-corvette-c7.png)
+· [Porsche](docs/images/driving-gt3.png) · [Piston cutaway](docs/images/porsche-gt3.png).
 
 ## What works
 
@@ -34,8 +35,8 @@ focuses on responsive sound and a native Mac interface.
   barrier collisions. A three-lap time trial has ordered checkpoints, lap/best
   timers, a finish state and a minimap. Recover to the last checkpoint or start
   a new run without reloading the engine.
-- A credited Porsche 911 GT3 body for both GT3 presets, reflective paint,
-  moving front wheels, body lean,
+- Detailed Porsche 911 GT3, Toyota Supra Mk4, Ferrari 458 and Corvette C7 bodies,
+  with reflective paint, textured trim, working brake lights, rolling and steering wheels, body lean,
   a responsive chase camera and a large MPH/RPM/gear HUD. The engine simulation drives
   actual forward and reverse travel; road and wheel motion use metres.
   The sun stays in the world, moving across the view as the car turns.
@@ -56,8 +57,10 @@ focuses on responsive sound and a native Mac interface.
 
 The new Porsche presets are **approximate sound models**, not recordings or
 factory-calibrated simulations. See [engines and provenance](docs/ENGINES.md).
-Other engine presets currently retain the credited concept body, labelled in
-the driving view; matching bodies are not bundled for the entire engine library.
+Press **E** to choose a car: Supra, Ferrari F136 and LS select the new bodies;
+both GT3 presets use the Porsche. The Corvette uses the existing LS V8 as a
+game engine swap. Other presets retain the credited concept body, labelled in
+the driving view. See [body selection and credits](docs/ENGINES.md#car-bodies).
 This is an experimental sound simulator, not an engineering or tuning tool.
 
 ## Build on an Apple Silicon Mac
@@ -160,8 +163,8 @@ Press **T** or launch with `--circuit` for the forest time trial. Drive the circ
 pass all eight checkpoints in order, and complete three laps. Brake before tight
 corners; leaving the asphalt increases resistance, while steering stays forgiving. Recovery
 adds a three-second penalty and returns you to the last passed checkpoint. The
-GT3 presets use the Porsche body; other presets use the concept car. Handling
-is deliberately arcade-style. Car and scenery credits are in
+body follows the selected engine preset. Handling is deliberately arcade-style.
+Car and scenery credits are in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 The city currently has static scenery and optional tour markers; traffic and
 pedestrians are not implemented.

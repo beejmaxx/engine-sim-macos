@@ -309,9 +309,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     _state.loading=true;_state.ready=false;_state.ignitionRequested=false;_state.preset=preset;
     _engineMenuItem.submenu=[self engineMenu];
     put(_state.title,SoundSession::presets()[preset].title);
-    const auto &presetId=SoundSession::presets()[preset].id;
-    _state.carBody=(presetId=="porsche_911_gt3" || presetId=="porsche_911_gt3_sprint")
-        ? State::CarBody::PorscheGt3 : State::CarBody::Concept;
+    _state.carBody=carBodyForPreset(SoundSession::presets()[preset].id);
     _state.engine={};_state.waveform.fill(0);_state.throttle=0;_state.missing=0;_state.writeErrors=0;_state.layer=0;_state.dyno=false;_state.dynoRpm=1000;_state.clutch=0;
     put(_state.notice,"Loading engine and exhaust sound...");put(_state.output,"");
     _renderer.connectSession(nullptr);_session.reset();
@@ -335,7 +333,11 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     const auto &presets=SoundSession::presets();
     for(size_t i=0;i<presets.size();++i) {
         if(i==2)[menu addItem:NSMenuItem.separatorItem];
-        NSMenuItem *item=[[NSMenuItem alloc] initWithTitle:[NSString stringWithUTF8String:presets[i].title.c_str()]
+        std::string title=presets[i].title;
+        if(presets[i].id=="ls")title="Chevrolet Corvette C7 / LS V8 swap";
+        else if(presets[i].id=="ferrari_f136_v8")title="Ferrari 458 Italia / F136 V8";
+        else if(presets[i].id=="supra")title="Toyota Supra Mk4 / 2JZ";
+        NSMenuItem *item=[[NSMenuItem alloc] initWithTitle:[NSString stringWithUTF8String:title.c_str()]
             action:@selector(selectEngine:) keyEquivalent:@""];
         item.target=self;item.tag=i;item.state=int(i)==_state.preset ? NSControlStateValueOn : NSControlStateValueOff;
         [menu addItem:item];
@@ -610,10 +612,12 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
     _passed=_passed && condition;
 }
 - (void)runTests:(double)t {
-    struct TestEngine { const char *id; int cylinders; };
+    struct TestEngine { const char *id; int cylinders; State::CarBody body=State::CarBody::Concept; };
     static constexpr TestEngine testEngines[]={
-        {"supra",6},{"ls",8},{"ferrari_f136_v8",8},{"ferrari_412_t2",12},
-        {"porsche_911_gt3",6},{"porsche_911_gt3_sprint",6},{"porsche_911_carrera_32",6},{"bmw_m52b28",6}
+        {"supra",6,State::CarBody::SupraMk4},{"ls",8,State::CarBody::CorvetteC7},
+        {"ferrari_f136_v8",8,State::CarBody::Ferrari458},{"ferrari_412_t2",12},
+        {"porsche_911_gt3",6,State::CarBody::PorscheGt3},{"porsche_911_gt3_sprint",6,State::CarBody::PorscheGt3},
+        {"porsche_911_carrera_32",6},{"bmw_m52b28",6}
     };
     auto s=_session->snapshot();
     if(_testStage==0 && t>.25) { [_view testClick:Start];++_testStage; }
@@ -650,8 +654,7 @@ std::string percentile(const std::array<uint64_t,256> &last,const std::array<uin
         [self check:std::abs(s.volume-.4)<.001 && s.exhaustMix==1 && std::abs(s.roughness-_session->defaultRoughness())<.001 name:"restore"];
         [self check:_state.uncapped && !_state.effects name:"render_toggles"];
         [self check:_session->visualLayout().cylinderCount==testEngines[_testPreset].cylinders name:"correct_engine_geometry"];
-        const auto &presetId=_session->preset().id;
-        [self check:(_state.carBody==State::CarBody::PorscheGt3)==(presetId=="porsche_911_gt3" || presetId=="porsche_911_gt3_sprint") name:"body_matches_engine_selection"];
+        [self check:_state.carBody==testEngines[_testPreset].body name:"body_matches_engine_selection"];
         [_view testKey:@"u"];[_view testKey:@"f"];
         [_window setContentSize:NSMakeSize(1000,625)];
         [_view testSlider:Volume fraction:.35];[_view testKey:@" "];++_testStage;

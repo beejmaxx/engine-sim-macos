@@ -4,9 +4,10 @@ This work is based on [Porsche 911 GT3](https://sketchfab.com/3d-models/porsche-
 by [ChevroletSS](https://sketchfab.com/ChevroletSS), licensed under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
-The model is selected by the `porsche_911_gt3` engine preset. Other engines
-currently retain the separately credited concept body. Neither body is a
-manufacturer-endorsed or calibrated vehicle simulation.
+The model is selected by the `porsche_911_gt3` and `porsche_911_gt3_sprint`
+engine presets. See [the full body selection](../../../docs/ENGINES.md#car-bodies)
+for the other cars. The body is not a manufacturer-endorsed or calibrated
+vehicle simulation.
 
 The source glTF and author notice were obtained from the public
 [Porsche-Timeline mirror](https://github.com/YoanMln/Porsche-Timeline/tree/d030dc224b6ca87ca836fc8f34eb050ba132fc38/assets/threeJS/991gt3rs)
@@ -24,8 +25,8 @@ It removes blurred wheel duplicates and hidden damage glass, changes material
 factors for paint, glass, rubber and lights, and assigns rolling wheel pivots
 and brake-light materials. The host provides lighting, suspension, steering,
 wheel animation and brake-light illumination. Texture/decal maps are omitted.
-The result contains 168,224 vertices and 234,580 triangles; both bodies are
-uploaded before engine audio starts and share one GPU draw per frame.
+The result contains 168,224 vertices and 234,580 triangles. All bodies are
+uploaded before engine audio starts; the selected car uses one GPU draw per frame.
 
 To reproduce (NumPy is needed only for this optional development step):
 

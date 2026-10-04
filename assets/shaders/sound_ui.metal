@@ -61,8 +61,8 @@ fragment float4 sound_fragment(Raster in [[stage_in]], texture2d<float> atlas [[
 
 struct CarVertex { packed_float3 p,n;float2 uv;uint material,wheel; };
 struct CarUniforms { float4 camera,right,up,forward;float4 wheels[5];float4 motion,pose,suspension,sun; };
-struct CarMaterial { float4 base,surface,emission; };
-struct CarRaster { float4 position [[position]];float3 world,normal;uint material [[flat]]; };
+struct CarMaterial { float4 base,surface,emission,texture; };
+struct CarRaster { float4 position [[position]];float3 world,normal;float2 uv;uint material [[flat]]; };
 vertex CarRaster car_vertex(uint id [[vertex_id]],const device CarVertex *mesh [[buffer(0)]],constant CarUniforms &u [[buffer(1)]]) {
     CarVertex v=mesh[id];float3 p=v.p,n=v.n;
     uint wheel=v.wheel&7;
@@ -90,7 +90,7 @@ vertex CarRaster car_vertex(uint id [[vertex_id]],const device CarVertex *mesh [
     float3 relative=p-u.camera.xyz;
     float3 eye=float3(dot(relative,u.right.xyz),dot(relative,u.up.xyz),dot(relative,u.forward.xyz));
     CarRaster out;out.position=float4(eye.x*1.25,eye.y*2+.04*eye.z,eye.z-.25,eye.z);
-    out.world=p;out.normal=n;out.material=v.material;return out;
+    out.world=p;out.normal=n;out.uv=v.uv;out.material=v.material;return out;
 }
 float3 car_environment(float3 direction,float roughness) {
     float sky=smoothstep(-.04,.35,direction.y);
@@ -102,8 +102,11 @@ float3 car_environment(float3 direction,float roughness) {
     return mix(ground,light,sky);
 }
 fragment float4 car_fragment(CarRaster in [[stage_in]],constant CarUniforms &u [[buffer(1)]],
-        const device CarMaterial *materials [[buffer(2)]]) {
+        const device CarMaterial *materials [[buffer(2)]],texture2d_array<float> colourMaps [[texture(0)]]) {
     CarMaterial m=materials[in.material];float3 n=normalize(in.normal),v=normalize(u.camera.xyz-in.world);
+    constexpr sampler carSampler(coord::normalized,address::repeat,filter::linear,mip_filter::linear);
+    if(m.texture.x>=0)m.base*=colourMaps.sample(carSampler,in.uv,uint(m.texture.x));
+    if(m.base.a<.02)discard_fragment();
     if(dot(n,v)<0)n=-n;
     float3 l=u.sun.xyz,h=normalize(l+v);
     float nv=max(.001,dot(n,v)),nl=max(.0,dot(n,l)),nh=max(.0,dot(n,h)),vh=max(.0,dot(v,h));
@@ -120,7 +123,10 @@ fragment float4 car_fragment(CarRaster in [[stage_in]],constant CarUniforms &u [
     light+=reflected*fresnel*(1-rough*.5);
     light+=m.surface.z*reflected*(.04+.96*pow(1-nv,5.0));
     light+=m.emission.rgb;
-    if(m.emission.w>.5)light+=float3(1,.025,.006)*(u.motion.y>0 ? 4.0 : .35);
+    // Mask in linear colour space: red lenses can be very dark, while amber
+    // indicators must not illuminate when the brake is pressed.
+    float brakeMask=m.emission.w>1.5 ? step(max(m.base.g,m.base.b)*4+.001,m.base.r) : 1;
+    if(m.emission.w>.5)light+=float3(1,.0015,.0005)*(u.motion.y>0 ? 4.0 : .35)*brakeMask;
     if(m.surface.w>.5)light=reflected*(.065+.45*pow(1-nv,5.0));
     // Simple filmic exposure, then encode for the dashboard's unorm target.
     light=(light*(2.51*light+.03))/(light*(2.43*light+.59)+.14);

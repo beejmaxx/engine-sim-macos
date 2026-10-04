@@ -159,17 +159,24 @@ coordinates. The sun is projected from a fixed world direction, with a 0.53-degr
 angular diameter, and disappears outside the camera view. The same direction
 lights scenery and the car. Straight travel correctly leaves this distant sun
 in place; steering rotates it across the sky.
-`src/sound_car_metal.h` uploads the credited Porsche 911 GT3 mesh
-(168,224 vertices, 234,580 triangles) and concept body before audio starts.
-The `porsche_911_gt3` preset selects the GT3; other presets select the concept
-body and display that fact. Switching only selects cached GPU buffers. Metal
-steers/rolls the wheels with each body's tyre radii, and transforms
-and lights the body. Mipmapped image planes supply foliage; a depth buffer resolves
+`src/sound_car_metal.h` uploads the credited Porsche 911 GT3, Supra Mk4,
+Ferrari 458, Corvette C7 and concept meshes before audio starts. Preset-to-body
+selection lives in `include/car_models.h`; both GT3 presets use the Porsche,
+Supra uses the Mk4, Ferrari F136 uses the 458 and LS uses the C7. Other presets
+select the concept body and display that fact. Switching only selects cached
+GPU buffers and textures. Metal steers/rolls the wheels with each body's tyre
+radii, and transforms and lights the body. Brake calipers steer without rolling;
+rear lamps follow the live brake state. The Supra and C7 use mipmapped sRGB
+base-colour texture arrays, created once before the audio session. Old ESC1
+untextured meshes and the new ESC2 material texture descriptors share the same
+render pipeline. Conversion/decompression/simplification happens offline with
+`tools/import_road_cars.py`; the app needs no Python or asset downloads.
+Mipmapped image planes supply foliage; a depth buffer resolves
 the scene. The dashboard uses one draw call; the game uses three (scenery, car, HUD).
 PNG encoding runs on a utility queue after GPU readback. See
 [asset credits](../THIRD_PARTY_NOTICES.md) for sources/licenses.
 
-The game has a free-roam city, one circuit, GT3 and concept bodies,
+The game has a free-roam city, one circuit, four recognizable car bodies plus a concept,
 forward/reverse driving, assisted drifting and a circuit time trial mode.
 It does not yet have traffic, pedestrians, opponents,
 a physical handbrake model or matching
@@ -455,6 +462,39 @@ continued through the separate AppKit stall. Evidence is under
 ./run-fast.sh --drive-test "$PWD/build/audio-validation/sprint-drive"
 python3 test/sound_gui_smoke.py --arcade-only --real-audio \
   --presets porsche_911_gt3_sprint --output build/audio-validation/sprint-city
+```
+
+### Supra, Ferrari and Corvette bodies (M1, 2026-10-04)
+
+The eight-preset native input suite passed with exact body-selection checks,
+map switching, held controls and direct Metal captures. After correcting texture
+handedness and brake-light colours, each new body passed a separate 20-second
+2560 × 1600 city benchmark, with effects and display synchronization enabled:
+
+| Body | Completed FPS | Mean CPU / GPU | Missing audio frames / Metal errors |
+| --- | ---: | ---: | ---: |
+| Supra Mk4 | 60.00 | 0.69 / 6.42 ms | 0 / 0 |
+| Ferrari 458 | 60.00 | 0.63 / 6.29 ms | 0 / 0 |
+| Corvette C7 | 60.00 | 0.63 / 5.46 ms | 0 / 0 |
+
+Those offscreen benchmarks used SDL dummy audio. The installed, signature-verified
+app then passed three separate **real CoreAudio** city tests, one for each body.
+They exercised acceleration, drifting, braking, reverse, a 1.2-second AppKit stall
+and a separate 1.2-second render stall. All three recorded zero missing audio
+frames, unexpected silent blocks, invalid samples, clipped samples and Metal
+errors. Maximum observed mixer callback gaps were 11.76 / 11.74 / 11.74 ms
+(Supra / Ferrari / Corvette). These are mixer timings, not a measurement of
+speaker latency. Render averages including the deliberate stall were
+54.68 / 55.03 / 55.04 FPS. Sound synthesis and the audio callback were unchanged.
+
+Evidence is under `build/audio-validation/real-cars/`; the README screenshots
+are actual Metal captures from these benchmarks. Repeat for each of `supra`,
+`ferrari_f136_v8` and `ls`:
+
+```sh
+python3 test/sound_gui_smoke.py --arcade-only --real-audio --presets supra \
+  --binary dist/engine-sim-sound.app/Contents/MacOS/engine-sim-sound \
+  --output build/audio-validation/cars-coreaudio-supra
 ```
 
 See [ENGINES.md](ENGINES.md) for model limitations, including the radial-9 startup

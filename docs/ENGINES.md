@@ -16,6 +16,27 @@ The library also includes Toyota Supra 2JZ, GM LS V8, Ferrari F136 V8 and
 412 T2 V12, Lexus LFA V10, Audi I5, Subaru EJ25 variants, Honda, Suzuki,
 Harley-Davidson, Merlin V12, radial engines, and several V6 examples.
 
+## Car bodies
+
+In the game, press **E** and select one of these entries. Changing the engine
+also selects its cached body; no model downloads or texture loading happen
+while driving. The HUD identifies the active body.
+
+| Menu entry | Preset ID | Body / asset credits |
+| --- | --- | --- |
+| Toyota Supra Mk4 / 2JZ | `supra` | [1998 Supra Mk4](../assets/vehicles/supra_mk4/README.md), pearl white |
+| Ferrari 458 Italia / F136 V8 | `ferrari_f136_v8` | [Open-roof 458](../assets/vehicles/ferrari_458/README.md), red |
+| Chevrolet Corvette C7 / LS V8 swap | `ls` | [Corvette C7](../assets/vehicles/corvette_c7/README.md), blue |
+| Porsche 911 GT3 / Porsche GT3 Sprint | `porsche_911_gt3` / `porsche_911_gt3_sprint` | [911 GT3](../assets/vehicles/porsche_gt3/README.md) |
+| Other engines | All other IDs | [Concept car](../assets/vehicles/concept/README.md) |
+
+The Corvette is explicitly an LS V8 swap in the game; its stock C7 drivetrain
+is not simulated. The 458 source is titled “Ferrari 458 Italia” by its author
+and depicts an open-roof car. Bodies are approximately metre-scaled, with
+separate wheels, materials and brake lamps. They do not change the existing
+sound models, transmissions or arcade handling. These visual assets are
+separately licensed under CC BY 4.0, with author notices in each asset directory.
+
 ## Porsche approximations
 
 These are new MIT-licensed examples derived from Ange Yaghi's bundled

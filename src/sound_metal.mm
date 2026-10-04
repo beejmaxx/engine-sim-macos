@@ -336,7 +336,7 @@ public:
         }
         text("ENGINE SIMULATOR  /  DRIVE",26,24,0,0xD1DDE4);
         text(s.title.data(),24,44,2);text(city ? "PORTSIDE CITY / FREE ROAM" : "ARCADE DRIVE / 3 LAP TIME TRIAL",26,74,0,0xD1DDE4);
-        if(s.carBody==State::CarBody::Concept)text("CONCEPT BODY",26,94,0,Dim);
+        text(carModel(s.carBody).label,26,94,0,Dim);
         button(Library,"ENGINES [E]",s);button(RoadView,"DASH [V]",s);
         button(WorldView,s.world==DrivingWorld::City ? "CITY [T]" : "CIRCUIT [T]",s,true);
         char label[96];std::snprintf(label,sizeof(label),"%.0f FPS  /  %s",fps,s.missing ? "AUDIO GAPS" : "AUDIO OK");right(label,1254,68,0,s.missing ? Red : 0xD1DDE4);
@@ -744,6 +744,7 @@ struct SoundMetalRenderer::Impl {
                 [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:draw.roadEnd];
                 car.draw(encoder,draw.roadScene,draw.roadScene.carPose().wheelDistance,current.engine.brake>0,current.carBody);
                 [encoder setRenderPipelineState:pipeline];[encoder setVertexBuffer:buffers[slot] offset:0 atIndex:0];
+                [encoder setFragmentTexture:atlas atIndex:0];
                 [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:draw.roadEnd vertexCount:draw.vertices.size()-draw.roadEnd];
             } else [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:draw.vertices.size()];
             [encoder endEncoding];

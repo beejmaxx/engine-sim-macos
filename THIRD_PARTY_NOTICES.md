@@ -24,6 +24,22 @@ This is an independent community fork, maintained at
   [the original Porsche 911 GT3 model](https://sketchfab.com/3d-models/porsche-911-gt3-78d5c47ab2554c2592b7e499179a0792).
   The converted mesh retains that license; see
   [source, modifications and license](assets/vehicles/porsche_gt3/README.md).
+- **1998 Toyota Supra**, by [BHP3D](https://sketchfab.com/BHP3D), is used under
+  **CC BY 4.0**. This work is based on
+  [the original model](https://sketchfab.com/3d-models/1998-toyota-supra-b9ee69e17af947c0bce1c54d34195187).
+  The converted mesh and textures retain that license; see
+  [source, modifications and license](assets/vehicles/supra_mk4/README.md).
+- **Ferrari 458 Italia**, by [vicent091036](https://sketchfab.com/vicent091036),
+  is used under **CC BY 4.0**. This work is based on
+  [the original model](https://sketchfab.com/3d-models/ferrari-458-italia-57bf6cc56931426e87494f554df1dab6),
+  distributed in optimized form by the three.js car example. The converted
+  mesh retains that license; see
+  [source, modifications and license](assets/vehicles/ferrari_458/README.md).
+- **Chevrolet Corvette (C7)**, by [Martin Trafas / Bexxie](https://sketchfab.com/Bexxie),
+  is used under **CC BY 4.0**. This work is based on
+  [the original model](https://sketchfab.com/3d-models/chevrolet-corvette-c7-2b509d1bce104224b147c81757f6f43a).
+  The converted mesh and textures retain that license; see
+  [source, modifications and license](assets/vehicles/corvette_c7/README.md).
 - **Pine Tree 01 preview render**, by Rico Cilliers and Rob Tuytel, from
   [Poly Haven](https://polyhaven.com/a/pine_tree_01), is used under **CC0 1.0**.
   See [scenery source and license](assets/scenery/README.md).
@@ -43,5 +59,6 @@ This is an independent community fork, maintained at
 - **GoogleTest**, used only for development tests, retains its BSD license in
   its separately fetched source distribution.
 
-Manufacturer names identify the modeled engines. This project is not affiliated
-with or endorsed by Porsche, BMW, Toyota, Ferrari, or other manufacturers.
+Manufacturer names identify the modeled engines and bodies. This project is not
+affiliated with or endorsed by Porsche, BMW, Toyota, Ferrari, Chevrolet, or other
+manufacturers.
